@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"image"
 	"log"
 	"os"
 	"time"
@@ -26,7 +27,6 @@ func main() {
 	home, _ := os.UserHomeDir()
 	semaforoSize := fyne.NewSize(28, 100)
 	modoEdicion := false
-	inicializado := false
 	numDirecciones := 0
 	botones := make([]*widget.Button, 0)
 
@@ -53,48 +53,68 @@ func main() {
 	w.SetIcon(icono)
 
 	//CARGAR IMAGENES
-	semVerde := canvas.NewImageFromFile("images/semaforos/semVerde.png")
-	semVerde.FillMode = canvas.ImageFillOriginal
-	semVerde.Resize(semaforoSize)
+	/*
+		semVerde, err := getImagen("images/semaforos/semVerde.png")
+		if err != nil {
+			mostrarError("Error al cargar la imagen: "+err.Error(), a)
+			a.Run()
+			return
+		}
+	*/
 
-	semAmbar := canvas.NewImageFromFile("images/semaforos/semAmbar.png")
-	semAmbar.FillMode = canvas.ImageFillOriginal
-	semAmbar.Resize(semaforoSize)
-
-	semRojo := canvas.NewImageFromFile("images/semaforos/semRojo.png")
-	semRojo.FillMode = canvas.ImageFillOriginal
-	semRojo.Resize(semaforoSize)
-
-	semApagado := canvas.NewImageFromFile("images/semaforos/semApagado.png")
-	semApagado.FillMode = canvas.ImageFillOriginal
-	semApagado.Resize(semaforoSize)
+	semAmbar, err := getImagen("images/semaforos/semAmbar.png")
+	if err != nil {
+		mostrarError("Error al cargar la imagen: "+err.Error(), a)
+		a.Run()
+		return
+	}
+	/*
+		semRojo, err := getImagen("images/semaforos/semRojo.png")
+		if err != nil {
+			mostrarError("Error al cargar la imagen: "+err.Error(), a)
+			a.Run()
+			return
+		}
+	*/
+	semApagado, err := getImagen("images/semaforos/semApagado.png")
+	if err != nil {
+		mostrarError("Error al cargar la imagen: "+err.Error(), a)
+		a.Run()
+		return
+	}
 
 	//FONDO
 	image := canvas.NewImageFromFile("images/cruces/cruce_vacio.png")
 	image.FillMode = canvas.ImageFillOriginal
 
-	layoutBotonesEditar := container.NewWithoutLayout()
-	fondo := container.NewStack(image, layoutBotonesEditar)
+	semTest := canvas.NewImageFromImage(semAmbar)
+	semTest.FillMode = canvas.ImageFillOriginal
+	semTest.Resize(semaforoSize)
 
-	semTest := semAmbar
-	layoutBotonesEditar.Add(semTest)
-	semTest.Move(fyne.NewPos(500, 500))
-	fyne.DoAndWait(func() { ambar(semAmbar, semApagado, semTest, layoutBotonesEditar) })
+	layoutBotonesEditar := container.NewWithoutLayout()
+	layoutBotonesEditar.Resize(fyne.NewSize(994, 993))
+
+	layoutTest := container.NewWithoutLayout()
+	layoutTest.Resize(fyne.NewSize(994, 993))
+	layoutTest.Add(semTest)
+	fondo := container.NewStack(image, container.NewCenter(layoutBotonesEditar), container.NewCenter(layoutTest))
+	go ambar(semAmbar, semApagado, semTest, layoutTest)
 
 	//BARRAS DE HERRAMIENTAS
 	barraHerramientasEdicion := widget.NewToolbar(
 		widget.NewToolbarAction(theme.DocumentSaveIcon(), func() {
 			//HACER EN ACCESO A DATOS
 			fmt.Println("guardar diseño")
+			fmt.Println(layoutBotonesEditar.Size())
 		}),
 		widget.NewToolbarSeparator(),
 		widget.NewToolbarAction(theme.DocumentCreateIcon(), func() {
 			if modoEdicion {
 				modoEdicion = false
-				colocarBotones(layoutBotonesEditar, botones, numDirecciones, inicializado, modoEdicion)
+				colocarBotones(layoutBotonesEditar, botones, numDirecciones, true, modoEdicion)
 			} else {
 				modoEdicion = true
-				colocarBotones(layoutBotonesEditar, botones, numDirecciones, inicializado, modoEdicion)
+				colocarBotones(layoutBotonesEditar, botones, numDirecciones, true, modoEdicion)
 			}
 		}),
 		widget.NewToolbarAction(theme.VisibilityIcon(), func() {
@@ -115,11 +135,13 @@ func main() {
 
 	contentEdicion := container.NewBorder(barraHerramientasEdicion, nil, nil, nil, fondo)
 	contentEjecucion := container.NewBorder(barraHerramientasEjecucion, nil, nil, nil, fondo)
+	fmt.Println(1, layoutBotonesEditar.Size(), fondo.Size(), image.Size())
 
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Edición", contentEdicion),
 		container.NewTabItem("Ejecución", contentEjecucion),
 	)
+	fmt.Println(2, layoutBotonesEditar.Size(), fondo.Size(), image.Size())
 
 	w.SetContent(tabs)
 	w.Show()
@@ -138,12 +160,13 @@ func main() {
 			image.FillMode = canvas.ImageFillOriginal
 			fondo.Objects[0] = image
 			fondo.Refresh()
-			colocarBotones(layoutBotonesEditar, botones, numDirecciones, inicializado, modoEdicion)
+			colocarBotones(layoutBotonesEditar, botones, numDirecciones, false, modoEdicion)
 			dDir.Hide()
 		})
 		boton4 := widget.NewButton("4 direcciones", func() {
 			numDirecciones = 4
-			colocarBotones(layoutBotonesEditar, botones, numDirecciones, inicializado, modoEdicion)
+			colocarBotones(layoutBotonesEditar, botones, numDirecciones, false, modoEdicion)
+
 			dDir.Hide()
 		})
 
@@ -202,7 +225,7 @@ func main() {
 
 	d = dialog.NewCustomWithoutButtons("Abrir diseño", c, w)
 	d.Show()
-	inicializado = true
+
 	a.Run()
 }
 
@@ -320,16 +343,31 @@ func getPosicion(a interface{}, c *fyne.Container) int {
 	return -1
 }
 
-func ambar(ambar, apagado, sem *canvas.Image, c *fyne.Container) {
+func getImagen(path string) (image.Image, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	image, _, err := image.Decode(f)
+	return image, err
+}
+
+func ambar(ambar, apagado image.Image, sem *canvas.Image, c *fyne.Container) {
 	pos := getPosicion(sem, c)
+	tick := time.NewTicker(time.Second)
+	fmt.Println(len(c.Objects))
 
 	for i := 0; i < 10; i++ {
-		c.Objects[pos] = ambar
-		c.Objects[pos].Refresh()
-		time.Sleep(time.Second)
-		c.Objects[pos] = apagado
-		c.Objects[pos].Refresh()
-		time.Sleep(time.Second)
+		imagen := c.Objects[pos].(*canvas.Image)
+
+		imagen.Image = ambar
+		imagen.Refresh()
+		<-tick.C
+
+		imagen.Image = apagado
+		imagen.Refresh()
+		<-tick.C
 	}
 }
 
@@ -338,18 +376,18 @@ func colocarBotones(c *fyne.Container, botones []*widget.Button, numDir int, ini
 		for i := 0; i < numDir; i++ {
 			boton := widget.NewButton("Editar "+fmt.Sprint(i+1), func() {
 			})
-			boton.Hidden = true
+			//boton.Hidden = true
 			botones = append(botones, boton)
 			c.Add(boton)
 			switch i {
 			case 0:
-				boton.Move(fyne.NewPos(100, 300))
+				boton.Move(fyne.NewPos(-100, 0))
 			case 1:
-				boton.Move(fyne.NewPos(300, 100))
+				boton.Move(fyne.NewPos(0, 100))
 			case 2:
-				boton.Move(fyne.NewPos(100, 100))
+				boton.Move(fyne.NewPos(100, 0))
 			case 3:
-				boton.Move(fyne.NewPos(300, 300))
+				boton.Move(fyne.NewPos(0, -100))
 			}
 		}
 	} else {
