@@ -28,7 +28,6 @@ func main() {
 	semaforoSize := fyne.NewSize(28, 100)
 	modoEdicion := false
 	numDirecciones := 0
-	botones := make([]*widget.Button, 0)
 
 	//INICIALIZACION BBDD, ¿PREGUNTAR O COMPROBAR?
 	err := inicializarDB(home)
@@ -94,11 +93,12 @@ func main() {
 	layoutBotonesEditar := container.NewWithoutLayout()
 	layoutBotonesEditar.Resize(fyne.NewSize(994, 993))
 
-	layoutTest := container.NewWithoutLayout()
-	layoutTest.Resize(fyne.NewSize(994, 993))
-	layoutTest.Add(semTest)
-	fondo := container.NewStack(image, container.NewCenter(layoutBotonesEditar), container.NewCenter(layoutTest))
-	go ambar(semAmbar, semApagado, semTest, layoutTest)
+	layoutComponentes := container.NewWithoutLayout()
+	layoutComponentes.Resize(fyne.NewSize(994, 993))
+	layoutComponentes.Add(semTest)
+
+	fondo := container.NewCenter(container.NewStack(image, layoutComponentes, layoutBotonesEditar))
+	go ambar(semAmbar, semApagado, semTest, layoutComponentes)
 
 	//BARRAS DE HERRAMIENTAS
 	barraHerramientasEdicion := widget.NewToolbar(
@@ -111,10 +111,10 @@ func main() {
 		widget.NewToolbarAction(theme.DocumentCreateIcon(), func() {
 			if modoEdicion {
 				modoEdicion = false
-				colocarBotones(layoutBotonesEditar, botones, numDirecciones, true, modoEdicion)
+				colocarBotones(nil, layoutBotonesEditar, nil, numDirecciones, true, modoEdicion)
 			} else {
 				modoEdicion = true
-				colocarBotones(layoutBotonesEditar, botones, numDirecciones, true, modoEdicion)
+				colocarBotones(nil, layoutBotonesEditar, nil, numDirecciones, true, modoEdicion)
 			}
 		}),
 		widget.NewToolbarAction(theme.VisibilityIcon(), func() {
@@ -135,13 +135,11 @@ func main() {
 
 	contentEdicion := container.NewBorder(barraHerramientasEdicion, nil, nil, nil, fondo)
 	contentEjecucion := container.NewBorder(barraHerramientasEjecucion, nil, nil, nil, fondo)
-	fmt.Println(1, layoutBotonesEditar.Size(), fondo.Size(), image.Size())
 
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Edición", contentEdicion),
 		container.NewTabItem("Ejecución", contentEjecucion),
 	)
-	fmt.Println(2, layoutBotonesEditar.Size(), fondo.Size(), image.Size())
 
 	w.SetContent(tabs)
 	w.Show()
@@ -156,17 +154,14 @@ func main() {
 
 		boton3 := widget.NewButton("3 direcciones", func() {
 			numDirecciones = 3
-			image = canvas.NewImageFromFile("images/cruces/cruce3_vacio.png")
-			image.FillMode = canvas.ImageFillOriginal
-			fondo.Objects[0] = image
-			fondo.Refresh()
-			colocarBotones(layoutBotonesEditar, botones, numDirecciones, false, modoEdicion)
+			image.File = "images/cruces/cruce3_vacio.png"
+			image.Refresh()
+			colocarBotones(w, layoutBotonesEditar, layoutComponentes, numDirecciones, false, modoEdicion)
 			dDir.Hide()
 		})
 		boton4 := widget.NewButton("4 direcciones", func() {
 			numDirecciones = 4
-			colocarBotones(layoutBotonesEditar, botones, numDirecciones, false, modoEdicion)
-
+			colocarBotones(w, layoutBotonesEditar, layoutComponentes, numDirecciones, false, modoEdicion)
 			dDir.Hide()
 		})
 
@@ -225,6 +220,12 @@ func main() {
 
 	d = dialog.NewCustomWithoutButtons("Abrir diseño", c, w)
 	d.Show()
+
+	//POSICIONAR
+	fmt.Println(1, layoutBotonesEditar.Size(), fondo.Size(), image.Size())
+
+	layoutBotonesEditar.Resize(fyne.NewSize(994, 993))
+	fmt.Println(2, layoutBotonesEditar.Size(), fondo.Size(), image.Size())
 
 	a.Run()
 }
@@ -356,46 +357,205 @@ func getImagen(path string) (image.Image, error) {
 func ambar(ambar, apagado image.Image, sem *canvas.Image, c *fyne.Container) {
 	pos := getPosicion(sem, c)
 	tick := time.NewTicker(time.Second)
-	fmt.Println(len(c.Objects))
 
 	for i := 0; i < 10; i++ {
 		imagen := c.Objects[pos].(*canvas.Image)
 
 		imagen.Image = ambar
-		imagen.Refresh()
+		fyne.Do(func() { imagen.Refresh() })
 		<-tick.C
 
 		imagen.Image = apagado
-		imagen.Refresh()
+		fyne.Do(func() { imagen.Refresh() })
 		<-tick.C
 	}
 }
 
-func colocarBotones(c *fyne.Container, botones []*widget.Button, numDir int, inicializado, editar bool) {
+func colocarBotones(w fyne.Window, cBotones, cElementos *fyne.Container, numDir int, inicializado, editar bool) {
 	if !inicializado {
 		for i := 0; i < numDir; i++ {
 			boton := widget.NewButton("Editar "+fmt.Sprint(i+1), func() {
+				menuEdicion(i+1, w, cElementos)
 			})
-			//boton.Hidden = true
-			botones = append(botones, boton)
-			c.Add(boton)
-			switch i {
+			boton.Hidden = true
+			cBotones.Add(boton)
+			boton.Resize(fyne.NewSize(80, 30))
+			switch i { //497 es el centro, la posicion de los botones es su esquina superior izquierda
 			case 0:
-				boton.Move(fyne.NewPos(-100, 0))
+				boton.Move(fyne.NewPos(357, 482))
 			case 1:
-				boton.Move(fyne.NewPos(0, 100))
+				boton.Move(fyne.NewPos(457, 582))
 			case 2:
-				boton.Move(fyne.NewPos(100, 0))
+				boton.Move(fyne.NewPos(557, 482))
 			case 3:
-				boton.Move(fyne.NewPos(0, -100))
+				boton.Move(fyne.NewPos(457, 382))
 			}
 		}
 	} else {
 		fmt.Println("mostrando:", editar)
 
-		for _, boton := range botones {
-			boton.Hidden = editar
+		for _, boton := range cBotones.Objects {
+			boton := boton.(*widget.Button)
+			boton.Hidden = !editar
 			boton.Refresh()
 		}
+	}
+}
+
+func menuEdicion(dir int, w fyne.Window, parent *fyne.Container) {
+	c := container.New(layout.NewVBoxLayout())
+
+	//PASO DE PEATONES
+	var checkPasoPeatones *widget.Check
+	pasoPeatonesActivado := false
+
+	switch dir {
+	case 1:
+		for _, obj := range parent.Objects {
+			if obj, ok := obj.(*canvas.Image); ok {
+				fmt.Println("dsdsdsa", obj.Position())
+				if obj.Position() == fyne.NewPos(297, 360) || obj.Position() == fyne.NewPos(297, 438) {
+					fmt.Println("weon")
+					pasoPeatonesActivado = true
+					break
+				}
+			}
+		}
+	case 2:
+		for _, obj := range parent.Objects {
+			if obj, ok := obj.(*canvas.Image); ok {
+				if obj.Position() == fyne.NewPos(360, 597) || obj.Position() == fyne.NewPos(438, 597) {
+					pasoPeatonesActivado = true
+					break
+				}
+			}
+		}
+	case 3:
+		for _, obj := range parent.Objects {
+			if obj, ok := obj.(*canvas.Image); ok {
+				if obj.Position() == fyne.NewPos(597, 360) || obj.Position() == fyne.NewPos(597, 438) {
+					pasoPeatonesActivado = true
+					break
+				}
+			}
+		}
+	case 4:
+		for _, obj := range parent.Objects {
+			if obj, ok := obj.(*canvas.Image); ok {
+				if obj.Position() == fyne.NewPos(360, 297) || obj.Position() == fyne.NewPos(438, 297) {
+					pasoPeatonesActivado = true
+					break
+				}
+			}
+		}
+	}
+
+	checkPasoPeatones = widget.NewCheck("Paso de peatones", func(b bool) {
+		addPasoPeatones(dir, b, parent)
+	})
+
+	c.Add(checkPasoPeatones)
+	if pasoPeatonesActivado {
+		checkPasoPeatones.SetChecked(true)
+	}
+
+	//modificar semaforos
+	//modificar num carriles
+	//direccion ^v
+	//direccion <>
+
+	d := dialog.NewCustom(fmt.Sprintf("Editar dirección %d", dir), "Cerrar", c, w)
+
+	d.Show()
+}
+
+func addPasoPeatones(dir int, b bool, parent *fyne.Container) {
+	if b {
+		pasoPeatonesImg, err := getImagen("images/marcas_viales/paso.png")
+		if err != nil {
+			mostrarError("Error al cargar la imagen: "+err.Error(), fyne.CurrentApp())
+		}
+
+		pasoPeatonesImgRotada, err := getImagen("images/marcas_viales/paso_rotado.png")
+		if err != nil {
+			mostrarError("Error al cargar la imagen: "+err.Error(), fyne.CurrentApp())
+		}
+
+		pasoPeatones1 := canvas.NewImageFromImage(pasoPeatonesImg)
+		pasoPeatones1.FillMode = canvas.ImageFillOriginal
+		pasoPeatones1.Resize(fyne.NewSize(100, 195))
+
+		pasoPeatones2 := canvas.NewImageFromImage(pasoPeatonesImg)
+		pasoPeatones2.FillMode = canvas.ImageFillOriginal
+		pasoPeatones2.Resize(fyne.NewSize(100, 195))
+
+		pasoPeatonesRotado1 := canvas.NewImageFromImage(pasoPeatonesImgRotada)
+		pasoPeatonesRotado1.FillMode = canvas.ImageFillOriginal
+		pasoPeatonesRotado1.Resize(fyne.NewSize(195, 100))
+
+		pasoPeatonesRotado2 := canvas.NewImageFromImage(pasoPeatonesImgRotada)
+		pasoPeatonesRotado2.FillMode = canvas.ImageFillOriginal
+		pasoPeatonesRotado2.Resize(fyne.NewSize(195, 100))
+
+		switch dir {
+		case 1:
+			pasoPeatones1.Move(fyne.NewPos(297, 360))
+			pasoPeatones2.Move(fyne.NewPos(297, 438))
+
+			parent.Add(pasoPeatones1)
+			parent.Add(pasoPeatones2)
+		case 2:
+			pasoPeatonesRotado1.Move(fyne.NewPos(360, 597))
+			pasoPeatonesRotado2.Move(fyne.NewPos(438, 597))
+
+			parent.Add(pasoPeatonesRotado1)
+			parent.Add(pasoPeatonesRotado2)
+		case 3:
+			pasoPeatones1.Move(fyne.NewPos(597, 360))
+			pasoPeatones2.Move(fyne.NewPos(597, 438))
+
+			parent.Add(pasoPeatones1)
+			parent.Add(pasoPeatones2)
+		case 4:
+			pasoPeatonesRotado1.Move(fyne.NewPos(360, 297))
+			pasoPeatonesRotado2.Move(fyne.NewPos(438, 297))
+
+			parent.Add(pasoPeatonesRotado1)
+			parent.Add(pasoPeatonesRotado2)
+		}
+
+		parent.Refresh()
+	} else {
+		var objetosAEliminar []fyne.CanvasObject
+		for _, obj := range parent.Objects {
+			if obj, ok := obj.(*canvas.Image); ok {
+				switch obj.Position() {
+				case fyne.NewPos(297, 360), fyne.NewPos(297, 438):
+					if dir == 1 {
+						objetosAEliminar = append(objetosAEliminar, obj)
+					}
+				case fyne.NewPos(360, 597), fyne.NewPos(438, 597):
+					if dir == 2 {
+						objetosAEliminar = append(objetosAEliminar, obj)
+					}
+				case fyne.NewPos(597, 360), fyne.NewPos(597, 438):
+					if dir == 3 {
+						objetosAEliminar = append(objetosAEliminar, obj)
+					}
+				case fyne.NewPos(360, 297), fyne.NewPos(438, 297):
+					if dir == 4 {
+						objetosAEliminar = append(objetosAEliminar, obj)
+					}
+				}
+			}
+		}
+
+		// Elimina los objetos recopilados
+		for _, obj := range objetosAEliminar {
+			parent.Remove(obj)
+		}
+
+		parent.Refresh()
+		fmt.Println("removiendo")
 	}
 }
