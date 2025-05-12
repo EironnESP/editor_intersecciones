@@ -26,6 +26,7 @@ var images embed.FS
 var flechas []image.Image
 var semaforos []image.Image
 var otrasMarcas []image.Image
+var layoutsMarcas = make([]*fyne.Container, 4)
 
 func main() {
 	a := app.New()
@@ -35,7 +36,6 @@ func main() {
 	semaforoSize := fyne.NewSize(28, 100)
 	modoEdicion := false
 	numDirecciones := 0
-	layoutsDirs := make([]*fyne.Container, 4)
 
 	//INICIALIZACION BBDD, ¿PREGUNTAR O COMPROBAR?
 	err := inicializarDB(home)
@@ -95,7 +95,7 @@ func main() {
 	layoutComponentes.Add(semTest)
 
 	fondo := container.NewCenter(container.NewStack(image, layoutComponentes, layoutBotonesEditar))
-	go ambar(semTest, layoutComponentes)
+	go ambar(semTest, layoutComponentes, false)
 
 	//BARRAS DE HERRAMIENTAS
 	barraHerramientasEdicion := widget.NewToolbar(
@@ -108,10 +108,10 @@ func main() {
 		widget.NewToolbarAction(theme.DocumentCreateIcon(), func() {
 			if modoEdicion {
 				modoEdicion = false
-				colocarBotones(nil, nil, layoutBotonesEditar, nil, numDirecciones, true, modoEdicion)
+				colocarBotones(nil, layoutBotonesEditar, nil, numDirecciones, true, modoEdicion)
 			} else {
 				modoEdicion = true
-				colocarBotones(nil, nil, layoutBotonesEditar, nil, numDirecciones, true, modoEdicion)
+				colocarBotones(nil, layoutBotonesEditar, nil, numDirecciones, true, modoEdicion)
 			}
 		}),
 		widget.NewToolbarAction(theme.VisibilityIcon(), func() {
@@ -130,8 +130,8 @@ func main() {
 		widget.NewToolbarAction(theme.MediaReplayIcon(), func() {}),
 	)
 
-	contentEdicion := container.NewBorder(barraHerramientasEdicion, nil, nil, nil, fondo)
-	contentEjecucion := container.NewBorder(barraHerramientasEjecucion, nil, nil, nil, fondo)
+	contentEdicion := container.NewBorder(nil, nil, container.NewVBox(barraHerramientasEdicion), nil, fondo)
+	contentEjecucion := container.NewBorder(nil, nil, container.NewVBox(barraHerramientasEjecucion), nil, fondo)
 
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Edición", contentEdicion),
@@ -153,12 +153,12 @@ func main() {
 			numDirecciones = 3
 			image.Image = fondo3
 			image.Refresh()
-			colocarBotones(layoutsDirs, w, layoutBotonesEditar, layoutComponentes, numDirecciones, false, modoEdicion)
+			colocarBotones(w, layoutBotonesEditar, layoutComponentes, numDirecciones, false, modoEdicion)
 			dDir.Hide()
 		})
 		boton4 := widget.NewButton("4 direcciones", func() {
 			numDirecciones = 4
-			colocarBotones(layoutsDirs, w, layoutBotonesEditar, layoutComponentes, numDirecciones, false, modoEdicion)
+			colocarBotones(w, layoutBotonesEditar, layoutComponentes, numDirecciones, false, modoEdicion)
 			dDir.Hide()
 		})
 
@@ -219,10 +219,7 @@ func main() {
 	d.Show()
 
 	//POSICIONAR
-	fmt.Println(1, layoutBotonesEditar.Size(), fondo.Size(), image.Size())
-
 	layoutBotonesEditar.Resize(fyne.NewSize(994, 993))
-	fmt.Println(2, layoutBotonesEditar.Size(), fondo.Size(), image.Size())
 
 	a.Run()
 }
@@ -393,72 +390,71 @@ func cargarSemaforos(a fyne.App) {
 }
 
 func cargarFlechas(a fyne.App) {
-	i := 2
-	//for i := 1; i < 5; i++ {
-	f, err := getImagen(fmt.Sprintf("images/marcas_viales/flechas/flecha_dcha_%d.png", i))
-	if err != nil {
-		mostrarError("Error al cargar la imagen: "+err.Error(), a)
-		a.Run()
-		return
-	}
-	flechas = append(flechas, f)
+	for i := 1; i < 5; i++ {
+		f, err := getImagen(fmt.Sprintf("images/marcas_viales/flechas/flecha_dcha_%d.png", i))
+		if err != nil {
+			mostrarError("Error al cargar la imagen: "+err.Error(), a)
+			a.Run()
+			return
+		}
+		flechas = append(flechas, f)
 
-	f, err = getImagen(fmt.Sprintf("images/marcas_viales/flechas/flecha_dcha_izqda_%d.png", i))
-	if err != nil {
-		mostrarError("Error al cargar la imagen: "+err.Error(), a)
-		a.Run()
-		return
-	}
-	flechas = append(flechas, f)
+		f, err = getImagen(fmt.Sprintf("images/marcas_viales/flechas/flecha_dcha_izqda_%d.png", i))
+		if err != nil {
+			mostrarError("Error al cargar la imagen: "+err.Error(), a)
+			a.Run()
+			return
+		}
+		flechas = append(flechas, f)
 
-	f, err = getImagen(fmt.Sprintf("images/marcas_viales/flechas/flecha_fuera_%d.png", i))
-	if err != nil {
-		mostrarError("Error al cargar la imagen: "+err.Error(), a)
-		a.Run()
-		return
-	}
-	flechas = append(flechas, f)
+		f, err = getImagen(fmt.Sprintf("images/marcas_viales/flechas/flecha_fuera_%d.png", i))
+		if err != nil {
+			mostrarError("Error al cargar la imagen: "+err.Error(), a)
+			a.Run()
+			return
+		}
+		flechas = append(flechas, f)
 
-	f, err = getImagen(fmt.Sprintf("images/marcas_viales/flechas/flecha_izqda_%d.png", i))
-	if err != nil {
-		mostrarError("Error al cargar la imagen: "+err.Error(), a)
-		a.Run()
-		return
-	}
-	flechas = append(flechas, f)
+		f, err = getImagen(fmt.Sprintf("images/marcas_viales/flechas/flecha_izqda_%d.png", i))
+		if err != nil {
+			mostrarError("Error al cargar la imagen: "+err.Error(), a)
+			a.Run()
+			return
+		}
+		flechas = append(flechas, f)
 
-	f, err = getImagen(fmt.Sprintf("images/marcas_viales/flechas/flecha_recto_%d.png", i))
-	if err != nil {
-		mostrarError("Error al cargar la imagen: "+err.Error(), a)
-		a.Run()
-		return
-	}
-	flechas = append(flechas, f)
+		f, err = getImagen(fmt.Sprintf("images/marcas_viales/flechas/flecha_recto_%d.png", i))
+		if err != nil {
+			mostrarError("Error al cargar la imagen: "+err.Error(), a)
+			a.Run()
+			return
+		}
+		flechas = append(flechas, f)
 
-	f, err = getImagen(fmt.Sprintf("images/marcas_viales/flechas/flecha_recto_dcha_%d.png", i))
-	if err != nil {
-		mostrarError("Error al cargar la imagen: "+err.Error(), a)
-		a.Run()
-		return
-	}
-	flechas = append(flechas, f)
+		f, err = getImagen(fmt.Sprintf("images/marcas_viales/flechas/flecha_recto_dcha_%d.png", i))
+		if err != nil {
+			mostrarError("Error al cargar la imagen: "+err.Error(), a)
+			a.Run()
+			return
+		}
+		flechas = append(flechas, f)
 
-	f, err = getImagen(fmt.Sprintf("images/marcas_viales/flechas/flecha_recto_izqda_%d.png", i))
-	if err != nil {
-		mostrarError("Error al cargar la imagen: "+err.Error(), a)
-		a.Run()
-		return
-	}
-	flechas = append(flechas, f)
+		f, err = getImagen(fmt.Sprintf("images/marcas_viales/flechas/flecha_recto_izqda_%d.png", i))
+		if err != nil {
+			mostrarError("Error al cargar la imagen: "+err.Error(), a)
+			a.Run()
+			return
+		}
+		flechas = append(flechas, f)
 
-	f, err = getImagen(fmt.Sprintf("images/marcas_viales/flechas/flecha_todo_%d.png", i))
-	if err != nil {
-		mostrarError("Error al cargar la imagen: "+err.Error(), a)
-		a.Run()
-		return
+		f, err = getImagen(fmt.Sprintf("images/marcas_viales/flechas/flecha_todo_%d.png", i))
+		if err != nil {
+			mostrarError("Error al cargar la imagen: "+err.Error(), a)
+			a.Run()
+			return
+		}
+		flechas = append(flechas, f)
 	}
-	flechas = append(flechas, f)
-	//}
 }
 
 func cargarOtrasMarcas(a fyne.App) {
@@ -495,31 +491,43 @@ func cargarOtrasMarcas(a fyne.App) {
 	otrasMarcas = append(otrasMarcas, f)
 }
 
-func ambar(sem *canvas.Image, c *fyne.Container) {
+func ambar(sem *canvas.Image, c *fyne.Container, permanente bool) {
 	pos := getPosicion(sem, c)
 	tick := time.NewTicker(time.Second)
 
 	imagen := c.Objects[pos].(*canvas.Image)
 
-	for i := 0; i < 10; i++ {
-		imagen.Image = semaforos[1]
-		fyne.Do(func() { imagen.Refresh() })
-		<-tick.C
+	if permanente {
+		for true {
+			imagen.Image = semaforos[1]
+			fyne.Do(func() { imagen.Refresh() })
+			<-tick.C
 
-		imagen.Image = semaforos[3]
-		fyne.Do(func() { imagen.Refresh() })
-		<-tick.C
+			imagen.Image = semaforos[3]
+			fyne.Do(func() { imagen.Refresh() })
+			<-tick.C
+		}
+	} else {
+		for i := 0; i < 10; i++ {
+			imagen.Image = semaforos[1]
+			fyne.Do(func() { imagen.Refresh() })
+			<-tick.C
+
+			imagen.Image = semaforos[3]
+			fyne.Do(func() { imagen.Refresh() })
+			<-tick.C
+		}
 	}
 
 	imagen.Image = semaforos[0]
 	fyne.Do(func() { imagen.Refresh() })
 }
 
-func colocarBotones(layoutsDirs []*fyne.Container, w fyne.Window, cBotones, cElementos *fyne.Container, numDir int, inicializado, editar bool) {
+func colocarBotones(w fyne.Window, cBotones, cElementos *fyne.Container, numDir int, inicializado, editar bool) {
 	if !inicializado {
 		for i := 0; i < numDir; i++ {
 			boton := widget.NewButton("Editar "+fmt.Sprint(i+1), func() {
-				menuEdicion(layoutsDirs, i+1, w, cElementos)
+				menuEdicion(i+1, w, cElementos)
 			})
 			boton.Hidden = true
 			cBotones.Add(boton)
@@ -546,9 +554,9 @@ func colocarBotones(layoutsDirs []*fyne.Container, w fyne.Window, cBotones, cEle
 	}
 }
 
-func menuEdicion(layoutsDirs []*fyne.Container, dir int, w fyne.Window, parent *fyne.Container) {
+func menuEdicion(dir int, w fyne.Window, parent *fyne.Container) {
 	c := container.New(layout.NewVBoxLayout())
-
+	var botonDirCarriles *widget.Button
 	//PASO DE PEATONES
 	var checkPasoPeatones *widget.Check
 	pasoPeatonesActivado := false
@@ -622,7 +630,13 @@ func menuEdicion(layoutsDirs []*fyne.Container, dir int, w fyne.Window, parent *
 		sliderCarrilesHaciaFuera.Max = float64(4 - numCarrilesCentro)
 		sliderCarrilesHaciaFuera.Refresh()
 
-		modificarNumCarriles(layoutsDirs, dir, numCarrilesCentro, numCarrilesFuera, parent)
+		if numCarrilesCentro > 0 {
+			botonDirCarriles.Enable()
+		} else {
+			botonDirCarriles.Disable()
+		}
+
+		modificarNumCarriles(dir, numCarrilesCentro, numCarrilesFuera, parent)
 		parent.Refresh()
 	}
 
@@ -638,13 +652,50 @@ func menuEdicion(layoutsDirs []*fyne.Container, dir int, w fyne.Window, parent *
 		sliderCarrilesHaciaCentro.Max = float64(4 - numCarrilesFuera)
 		sliderCarrilesHaciaCentro.Refresh()
 
-		modificarNumCarriles(layoutsDirs, dir, numCarrilesCentro, numCarrilesFuera, parent)
+		if numCarrilesCentro > 0 {
+			botonDirCarriles.Enable()
+		} else {
+			botonDirCarriles.Disable()
+		}
+
+		modificarNumCarriles(dir, numCarrilesCentro, numCarrilesFuera, parent)
 		parent.Refresh()
 	}
 
 	c.Add(sliderCarrilesHaciaFuera)
 
+	//SI YA HAY CARRILES SE PONEN EN LOS SLIDERS
+	if layoutsMarcas[dir-1] != nil {
+		for i, obj := range layoutsMarcas[dir-1].Objects {
+			if obj, ok := obj.(*canvas.Image); ok {
+				if obj.Image == flechas[2] || obj.Image == flechas[10] || obj.Image == flechas[18] || obj.Image == flechas[26] {
+					sliderCarrilesHaciaFuera.Value++
+					numCarrilesFuera++
+
+					labelFuera.Text = fmt.Sprintf("Carriles hacia fuera: %d", numCarrilesFuera)
+					labelFuera.Refresh()
+				} else if i%2 == 0 {
+					sliderCarrilesHaciaCentro.Value++
+					numCarrilesCentro++
+
+					labelCentro.Text = fmt.Sprintf("Carriles hacia el centro: %d", numCarrilesCentro)
+					labelCentro.Refresh()
+				}
+			}
+		}
+		sliderCarrilesHaciaFuera.Max = float64(4 - numCarrilesCentro)
+		sliderCarrilesHaciaFuera.Refresh()
+
+		sliderCarrilesHaciaCentro.Max = float64(4 - numCarrilesFuera)
+		sliderCarrilesHaciaCentro.Refresh()
+	}
+
 	//DIR CARRILES
+	botonDirCarriles = widget.NewButton("Editar dirección de los carriles", func() {
+
+	})
+	botonDirCarriles.Disable()
+	c.Add(container.NewCenter(botonDirCarriles))
 
 	//SEMAFOROS
 
@@ -734,57 +785,104 @@ func modificarPasoPeatones(dir int, b bool, parent *fyne.Container) {
 	}
 }
 
-func modificarNumCarriles(layoutsDirs []*fyne.Container, dir int, numCarrilesDentro, numCarrilesFuera int, parent *fyne.Container) {
-	//198x198 31
+func modificarNumCarriles(dir int, numCarrilesDentro, numCarrilesFuera int, parent *fyne.Container) {
+	layoutsDirs := make([]*fyne.Container, 4)
+
+	//BORRAR LAS FLECHAS ANTERIORES
+	switch dir {
+	case 1:
+	case 2:
+		for _, c := range parent.Objects {
+			if c != nil && c.Position() == fyne.NewPos(397, 710) {
+				parent.Remove(c)
+				layoutsMarcas[dir-1] = nil
+			}
+		}
+	case 3:
+	case 4:
+	}
+
+	//AJUSTAR TAMAÑO DE FLECHAS CON PROPORCION 82x231 ALTURA MAX 198
 	var sizeFlechas fyne.Size
 	switch numCarrilesDentro + numCarrilesFuera {
 	case 0:
-		fmt.Print(0)
 		return
 	case 1, 2:
-		fmt.Print(12)
-		sizeFlechas = fyne.NewSize(83, 332)
+		if dir == 1 || dir == 3 {
+			sizeFlechas = fyne.NewSize(198, 70)
+		} else {
+			sizeFlechas = fyne.NewSize(70, 198)
+		}
 	case 3:
-		fmt.Print(3)
-
+		if dir == 1 || dir == 3 {
+			sizeFlechas = fyne.NewSize(124, 44)
+		} else {
+			sizeFlechas = fyne.NewSize(44, 124)
+		}
 	case 4:
-		fmt.Print(4)
-
+		if dir == 1 || dir == 3 {
+			sizeFlechas = fyne.NewSize(73, 26)
+		} else {
+			sizeFlechas = fyne.NewSize(26, 73)
+		}
 	}
 
+	//CREAR FLECHAS
 	var c *fyne.Container
 	switch dir {
 	case 1:
 
 	case 2:
-		c = container.NewHBox()
+		c = container.New(&carriles{})
 		c.Move(fyne.NewPos(397, 710))
 		c.Resize(fyne.NewSize(198, 198))
 
-		flechaFuera := canvas.NewImageFromImage(flechas[2])
-		flechaFuera.FillMode = canvas.ImageFillOriginal
-		c.Add(flechaFuera)
-		flechaFuera.Resize(sizeFlechas)
-		flechaFuera.Refresh()
+		for i := 1; i <= numCarrilesFuera; i++ {
+			flecha := canvas.NewImageFromImage(flechas[2+(8*(dir-1))])
+			flecha.FillMode = canvas.ImageFillStretch
+			c.Add(flecha)
+			flecha.Resize(sizeFlechas)
 
-		continua := canvas.NewImageFromImage(otrasMarcas[2])
-		continua.FillMode = canvas.ImageFillOriginal
-		c.Add(continua)
+			if i < numCarrilesFuera {
+				linea := canvas.NewImageFromImage(otrasMarcas[2])
+				linea.FillMode = canvas.ImageFillStretch
+				c.Add(linea)
+				linea.Resize(fyne.NewSize(30, 198))
+			}
+		}
 
-		flechaRecto := canvas.NewImageFromImage(flechas[4])
-		flechaRecto.FillMode = canvas.ImageFillOriginal
-		c.Add(flechaRecto)
-		flechaRecto.Resize(sizeFlechas)
-		flechaRecto.Refresh()
+		if numCarrilesFuera > 0 && numCarrilesDentro > 0 {
+			continua := canvas.NewImageFromImage(otrasMarcas[3])
+			continua.FillMode = canvas.ImageFillStretch
+			c.Add(continua)
+			continua.Resize(fyne.NewSize(30, 198))
+		}
+
+		for i := 1; i <= numCarrilesDentro; i++ {
+			flecha := canvas.NewImageFromImage(flechas[4+(8*(dir-1))])
+			flecha.FillMode = canvas.ImageFillStretch
+			c.Add(flecha)
+			flecha.Resize(sizeFlechas)
+
+			if i < numCarrilesDentro {
+				linea := canvas.NewImageFromImage(otrasMarcas[2])
+				linea.FillMode = canvas.ImageFillStretch
+				c.Add(linea)
+				linea.Resize(fyne.NewSize(30, 198))
+			}
+		}
 
 		layoutsDirs[dir-1] = c
 	case 3:
 	case 4:
 	}
 
-	for _, layout := range layoutsDirs {
-		if layout != nil {
-			parent.Add(layout)
-		}
+	if c != nil {
+		parent.Add(c)
+		layoutsMarcas[dir-1] = c
 	}
+}
+
+func modificarDirCarriles() {
+
 }
