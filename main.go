@@ -42,6 +42,7 @@ var secuencias = make([][]Secuencia, 5)
 var botonesSemaforos = make([][]*widget.Button, 5)
 var layoutComponentes *fyne.Container
 var colores = []string{"Verde", "Ámbar", "Ámbar (parpadeo)", "Rojo"}
+var fasesCopiada Secuencia
 
 func main() {
 	a := app.New()
@@ -105,7 +106,7 @@ func main() {
 		widget.NewToolbarAction(theme.DocumentSaveIcon(), func() {
 			//HACER EN ACCESO A DATOS
 			fmt.Println("guardar diseño")
-			fmt.Println(layoutBotonesEditar.Size())
+			fmt.Println(secuencias)
 		}),
 		widget.NewToolbarSeparator(),
 		widget.NewToolbarAction(theme.DocumentCreateIcon(), func() {
@@ -140,6 +141,15 @@ func main() {
 		container.NewTabItem("Edición", contentEdicion),
 		container.NewTabItem("Ejecución", contentEjecucion),
 	)
+
+	tabs.OnSelected = func(t *container.TabItem) {
+		if t.Text == "Ejecución" { //OCULTAR BOTONES EN VISTA DE EJECUCION
+			modoEdicion = false
+			colocarBotones(nil, layoutBotonesEditar, numDirecciones, true, modoEdicion)
+		}
+	}
+
+	tabs.SetTabLocation(container.TabLocationLeading)
 
 	w.SetContent(tabs)
 	w.Show()
@@ -335,8 +345,17 @@ func windowSize(part float32) fyne.Size {
 	return fyne.NewSize(800, 800)
 }
 
-func getPosicion(a interface{}, c *fyne.Container) int {
+func getPosicionEnContainer(a interface{}, c *fyne.Container) int {
 	for i, obj := range c.Objects {
+		if obj == a {
+			return i
+		}
+	}
+	return -1
+}
+
+func getPosicionEnArray(a *canvas.Image, b []fyne.CanvasObject) int {
+	for i, obj := range b {
 		if obj == a {
 			return i
 		}
@@ -593,7 +612,7 @@ func cargarOtrasMarcas(a fyne.App) {
 }
 
 func ambar(sem *canvas.Image, c *fyne.Container, permanente bool) {
-	pos := getPosicion(sem, c)
+	pos := getPosicionEnContainer(sem, c)
 	tick := time.NewTicker(time.Second)
 
 	imagen := c.Objects[pos].(*canvas.Image)
@@ -1251,7 +1270,7 @@ func menuAddSemaforos(dir int, w fyne.Window, peatones bool, numCarrilesCentro, 
 			}
 			//crear boton
 			b := widget.NewButton("Semáforo saliente", func() {
-				menuSecuenciaSemaforos(0, w, false, sem, len(cIzquierda.Objects))
+				menuSecuenciaSemaforos(0, w, false, sem, getPosicionEnArray(sem, cIzquierda.Objects))
 			})
 
 			botonesSemaforos[dir] = append(botonesSemaforos[dir], b)
@@ -1264,7 +1283,7 @@ func menuAddSemaforos(dir int, w fyne.Window, peatones bool, numCarrilesCentro, 
 			btnAddSemaforoFuera.Disable()
 			b := widget.NewButton("Semáforo saliente", func() {
 				if sem, ok := cIzquierda.Objects[0].(*canvas.Image); ok {
-					menuSecuenciaSemaforos(0, w, false, sem, -1)
+					menuSecuenciaSemaforos(0, w, false, sem, getPosicionEnArray(sem, cIzquierda.Objects))
 				}
 			})
 			cBotones.Add(b)
@@ -1300,7 +1319,7 @@ func menuAddSemaforos(dir int, w fyne.Window, peatones bool, numCarrilesCentro, 
 
 			//crear boton
 			b := widget.NewButton("Semáforo entrante", func() {
-				menuSecuenciaSemaforos(dir, w, true, sem, len(cDerecha.Objects))
+				menuSecuenciaSemaforos(dir, w, true, sem, getPosicionEnArray(sem, cDerecha.Objects))
 			})
 
 			botonesSemaforos[dir] = append(botonesSemaforos[dir], b)
@@ -1330,7 +1349,7 @@ func menuAddSemaforos(dir int, w fyne.Window, peatones bool, numCarrilesCentro, 
 
 				b := widget.NewButton("Semáforo entrante", func() {
 					if sem, ok := obj.(*canvas.Image); ok {
-						menuSecuenciaSemaforos(0, w, true, sem, -1)
+						menuSecuenciaSemaforos(dir, w, true, sem, getPosicionEnArray(sem, cDerecha.Objects))
 					}
 				})
 				cBotones.Add(b)
@@ -1480,43 +1499,44 @@ func menuSecuenciaSemaforos(dir int, w fyne.Window, entrante bool, sem *canvas.I
 	c.Add(btnSecuencia)
 	c.Add(cSecuencia)
 
+	//COMPROBAR FASES EXISTENTES Y COLOCARLAS
+	if len(secuencias[dir]) > 0 {
+		for _, sec := range secuencias[dir] {
+			if sec.Posicion == pos {
+				coloresUsados = colocarFases(coloresUsados, sec, cSecuencia)
+				break
+			}
+		}
+	}
+
 	cBotones := container.New(layout.NewGridLayout(4))
 
 	btnCopiar := widget.NewButton("Copiar fases", func() {
-
+		fasesCopiada = obtenerSecuencia(cSecuencia, sem, dir, pos, w)
 	})
 	cBotones.Add(btnCopiar)
 
 	btnPegar := widget.NewButton("Pegar fases", func() {
-
+		coloresUsados = colocarFases(coloresUsados, fasesCopiada, cSecuencia)
 	})
 	cBotones.Add(btnPegar)
 
 	btnGuardar := widget.NewButton("Guardar", func() {
-		var colores []string
-		var tiempos []time.Duration
+		s := obtenerSecuencia(cSecuencia, sem, dir, pos, w)
 
-		for _, fase := range cSecuencia.Objects {
-			if comboBox, ok := fase.(*widget.Select); ok {
-				colores = append(colores, comboBox.Selected)
-			} else if entry, ok := fase.(*widget.Entry); ok {
-				if i, err := strconv.Atoi(entry.Text); err == nil {
-					tiempos = append(tiempos, time.Second*time.Duration(i))
-				} else {
-					mostrarError(err.Error(), fyne.CurrentApp(), w)
-				}
+		//SE ALMACENAN LAS SECUENCIAS, SI YA ESTABAN ALMACENADAS SE SOBREESCRIBEN
+		existe := false
+		for i, sec := range secuencias[dir] {
+			if sec.Posicion == s.Posicion {
+				secuencias[dir][i] = s
+				existe = true
+				break
 			}
 		}
 
-		s := Secuencia{
-			sem,
-			dir,
-			colores,
-			tiempos,
-			pos,
+		if !existe {
+			secuencias[dir] = append(secuencias[dir], s)
 		}
-
-		secuencias[dir] = append(secuencias[dir], s)
 	})
 	cBotones.Add(btnGuardar)
 
@@ -1529,6 +1549,78 @@ func menuSecuenciaSemaforos(dir int, w fyne.Window, entrante bool, sem *canvas.I
 
 	d = dialog.NewCustomWithoutButtons("Secuencia de semáforo", c, w)
 	d.Show()
+}
+
+func obtenerSecuencia(cSecuencia *fyne.Container, sem *canvas.Image, dir int, pos int, w fyne.Window) Secuencia {
+	var colores []string
+	var tiempos []time.Duration
+
+	for _, fase := range cSecuencia.Objects {
+		if comboBox, ok := fase.(*widget.Select); ok {
+			colores = append(colores, comboBox.Selected)
+		} else if entry, ok := fase.(*widget.Entry); ok {
+			if entry.Text == "" {
+				entry.Text = "0"
+			}
+			if i, err := strconv.Atoi(entry.Text); err == nil {
+				tiempos = append(tiempos, time.Second*time.Duration(i))
+			} else {
+				mostrarError(err.Error(), fyne.CurrentApp(), w)
+			}
+		}
+	}
+
+	s := Secuencia{
+		sem,
+		dir,
+		colores,
+		tiempos,
+		pos,
+	}
+
+	return s
+}
+
+func colocarFases(coloresUsados []string, sec Secuencia, cSecuencia *fyne.Container) []string {
+	fmt.Println("Colocando: ", sec)
+	for i, color := range sec.Colores {
+		//SIMILAR AL FUNCIONAMIENTO DE "AÑADIR FASE" PERO COMPLETANDO DATOS
+		var coloresRecortado []string
+		for _, color := range colores {
+			if !slices.Contains(coloresUsados, color) {
+				coloresRecortado = append(coloresRecortado, color)
+			}
+		}
+
+		comboBoxColor := widget.NewSelect(coloresRecortado, func(value string) {
+			coloresUsados, _ = recargarColores(cSecuencia)
+		})
+		comboBoxColor.Selected = color
+		cSecuencia.Add(comboBoxColor)
+
+		inputTiempo := widget.NewEntry()
+		inputTiempo.SetPlaceHolder("Segundos")
+		inputTiempo.OnChanged = func(str string) {
+			if i, err := strconv.Atoi(str); err != nil || i >= 100 || i <= 0 { //comprobar si es numerico, no negativo y menor a 100 sec
+				inputTiempo.Text = ""
+			}
+		}
+		inputTiempo.Text = strconv.Itoa(int(sec.Tiempos[i].Seconds()))
+		cSecuencia.Add(inputTiempo)
+
+		var btnBorrar *widget.Button
+		btnBorrar = widget.NewButton("Borrar", func() {
+			cSecuencia.Remove(comboBoxColor)
+			cSecuencia.Remove(inputTiempo)
+			cSecuencia.Remove(btnBorrar)
+
+			coloresUsados, coloresRecortado = recargarColores(cSecuencia)
+		})
+
+		cSecuencia.Add(btnBorrar)
+	}
+
+	return coloresUsados
 }
 
 func recargarColores(cSecuencia *fyne.Container) ([]string, []string) {
