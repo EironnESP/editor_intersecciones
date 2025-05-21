@@ -363,14 +363,13 @@ func getPosicionEnArray(a *canvas.Image, b []fyne.CanvasObject) int {
 	return -1
 }
 
-func getAllPosicion(a interface{}, c *fyne.Container) []int {
-	var positions []int
-	for i, obj := range c.Objects {
+func getPosicionFlecha(a image.Image, b []image.Image) int {
+	for i, obj := range b {
 		if obj == a {
-			positions = append(positions, i)
+			return i
 		}
 	}
-	return positions
+	return -1
 }
 
 func getImagen(path string) (image.Image, error) {
@@ -792,7 +791,7 @@ func menuEdicion(dir int, w fyne.Window) {
 
 	//DIR CARRILES
 	botonDirCarriles = widget.NewButton("Editar dirección de los carriles", func() {
-
+		modificarDirCarriles(dir, w)
 	})
 	botonDirCarriles.Disable()
 	c.Add(container.NewCenter(botonDirCarriles))
@@ -1155,8 +1154,71 @@ func modificarNumCarriles(dir int, numCarrilesDentro, numCarrilesFuera int) {
 	}
 }
 
-func modificarDirCarriles() {
-	//TODO
+func modificarDirCarriles(dir int, w fyne.Window) {
+	c := container.New(layout.NewGridLayout(2))
+
+	//RECORRERSE LOS CARRILES Y COLOCAR BOTONES
+	for _, obj := range layoutsMarcas[dir-1].Objects {
+		textoBtn := ""
+
+		if obj, ok := obj.(*canvas.Image); ok {
+			switch getPosicionFlecha(obj.Image, flechas) % 8 {
+			case 0: //dcha
+				textoBtn = "Derecha"
+			case 1: //dcha_izqda
+				textoBtn = "Derecha-Izquierda"
+			// case 2 es hacia fuera, por lo que no se puede editar
+			case 3: //izqda
+				textoBtn = "Izquierda"
+			case 4: //recto (por defecto)
+				textoBtn = "Recto"
+			case 5: //recto_dcha
+				textoBtn = "Recto-Derecha"
+			case 6: //recto_izqda
+				textoBtn = "Recto-Izquierda"
+			case 7: //todo
+				textoBtn = "Todo"
+			}
+
+			if textoBtn != "" { //CREAR BOTON
+				var btn *widget.Button
+				btn = widget.NewButton(textoBtn, func() {
+					selectDireccion := widget.NewSelect([]string{"Recto", "Derecha", "Izquierda", "Recto-Derecha", "Recto-Izquierda", "Derecha-Izquierda", "Todas direcciones"},
+						func(s string) {
+							switch s {
+							case "Recto":
+								obj.Image = flechas[4+(8*(dir-1))]
+							case "Derecha":
+								obj.Image = flechas[0+(8*(dir-1))]
+							case "Izquierda":
+								obj.Image = flechas[3+(8*(dir-1))]
+							case "Recto-Derecha":
+								obj.Image = flechas[5+(8*(dir-1))]
+							case "Recto-Izquierda":
+								obj.Image = flechas[6+(8*(dir-1))]
+							case "Derecha-Izquierda":
+								obj.Image = flechas[1+(8*(dir-1))]
+							case "Todas direcciones":
+								obj.Image = flechas[7+(8*(dir-1))]
+							}
+							obj.Refresh()
+
+							btn.Text = s
+							btn.Refresh()
+						})
+					selectDireccion.SetSelected(btn.Text)
+
+					dialogDireccion := dialog.NewCustom("Seleccionar dirección", "Cerrar", selectDireccion, w)
+					dialogDireccion.Show()
+				})
+				c.Add(btn)
+			}
+			textoBtn = ""
+		}
+	}
+
+	d := dialog.NewCustom(fmt.Sprintf("Editar carriles %d", dir), "Cerrar", c, w)
+	d.Show()
 }
 
 func menuAddSemaforos(dir int, w fyne.Window, peatones bool, numCarrilesCentro, numCarrilesFuera int) {
@@ -1582,7 +1644,7 @@ func obtenerSecuencia(cSecuencia *fyne.Container, sem *canvas.Image, dir int, po
 }
 
 func colocarFases(coloresUsados []string, sec Secuencia, cSecuencia *fyne.Container) []string {
-	fmt.Println("Colocando: ", sec)
+	//fmt.Println("Colocando: ", sec)
 	for i, color := range sec.Colores {
 		//SIMILAR AL FUNCIONAMIENTO DE "AÑADIR FASE" PERO COMPLETANDO DATOS
 		var coloresRecortado []string
