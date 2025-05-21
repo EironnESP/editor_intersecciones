@@ -1331,8 +1331,13 @@ func menuAddSemaforos(dir int, w fyne.Window, peatones bool, numCarrilesCentro, 
 				cDerecha.Add(sem)
 			}
 			//crear boton
-			b := widget.NewButton("Semáforo saliente", func() {
-				menuSecuenciaSemaforos(0, w, false, sem, getPosicionEnArray(sem, cIzquierda.Objects))
+			var b *widget.Button
+			b = widget.NewButton("Semáforo saliente", func() {
+				menuSecuenciaSemaforos(0, w, false, sem, getPosicionEnArray(sem, cIzquierda.Objects), func() {
+					cBotones.Remove(b)
+					cBotones.Refresh()
+					btnAddSemaforoFuera.Enable()
+				})
 			})
 
 			botonesSemaforos[dir] = append(botonesSemaforos[dir], b)
@@ -1345,7 +1350,12 @@ func menuAddSemaforos(dir int, w fyne.Window, peatones bool, numCarrilesCentro, 
 			btnAddSemaforoFuera.Disable()
 			b := widget.NewButton("Semáforo saliente", func() {
 				if sem, ok := cIzquierda.Objects[0].(*canvas.Image); ok {
-					menuSecuenciaSemaforos(0, w, false, sem, getPosicionEnArray(sem, cIzquierda.Objects))
+					var b *widget.Button
+					menuSecuenciaSemaforos(0, w, false, sem, getPosicionEnArray(sem, cIzquierda.Objects), func() {
+						cBotones.Remove(b)
+						cBotones.Refresh()
+						btnAddSemaforoFuera.Enable()
+					})
 				}
 			})
 			cBotones.Add(b)
@@ -1381,7 +1391,12 @@ func menuAddSemaforos(dir int, w fyne.Window, peatones bool, numCarrilesCentro, 
 
 			//crear boton
 			b := widget.NewButton("Semáforo entrante", func() {
-				menuSecuenciaSemaforos(dir, w, true, sem, getPosicionEnArray(sem, cDerecha.Objects))
+				var b *widget.Button
+				menuSecuenciaSemaforos(dir, w, true, sem, getPosicionEnArray(sem, cDerecha.Objects), func() {
+					cBotones.Remove(b)
+					cBotones.Refresh()
+					btnAddSemaforoDentro.Enable()
+				})
 			})
 
 			botonesSemaforos[dir] = append(botonesSemaforos[dir], b)
@@ -1411,7 +1426,12 @@ func menuAddSemaforos(dir int, w fyne.Window, peatones bool, numCarrilesCentro, 
 
 				b := widget.NewButton("Semáforo entrante", func() {
 					if sem, ok := obj.(*canvas.Image); ok {
-						menuSecuenciaSemaforos(dir, w, true, sem, getPosicionEnArray(sem, cDerecha.Objects))
+						var b *widget.Button
+						menuSecuenciaSemaforos(dir, w, true, sem, getPosicionEnArray(sem, cDerecha.Objects), func() {
+							cBotones.Remove(b)
+							cBotones.Refresh()
+							btnAddSemaforoDentro.Enable()
+						})
 					}
 				})
 				cBotones.Add(b)
@@ -1454,7 +1474,7 @@ type Secuencia struct {
 	Posicion  int             `json:"pos"`
 }
 
-func menuSecuenciaSemaforos(dir int, w fyne.Window, entrante bool, sem *canvas.Image, pos int) {
+func menuSecuenciaSemaforos(dir int, w fyne.Window, entrante bool, sem *canvas.Image, pos int, onDelete func()) { //onDelete borra el botón al borrar el semáforo
 	c := container.NewVBox()
 	var opciones []string
 	cSecuencia := container.New(layout.NewGridLayout(3))
@@ -1571,7 +1591,7 @@ func menuSecuenciaSemaforos(dir int, w fyne.Window, entrante bool, sem *canvas.I
 		}
 	}
 
-	cBotones := container.New(layout.NewGridLayout(4))
+	cBotones := container.New(layout.NewGridLayout(5))
 
 	btnCopiar := widget.NewButton("Copiar fases", func() {
 		fasesCopiada = obtenerSecuencia(cSecuencia, sem, dir, pos, w)
@@ -1582,6 +1602,55 @@ func menuSecuenciaSemaforos(dir int, w fyne.Window, entrante bool, sem *canvas.I
 		coloresUsados = colocarFases(coloresUsados, fasesCopiada, cSecuencia)
 	})
 	cBotones.Add(btnPegar)
+
+	btnBorrar := widget.NewButton("Borrar semáforo", func() {
+		dialog.ShowConfirm("Borrar semáforo", "¿Seguro que quieres borrar este semáforo?", func(b bool) {
+			for dirIdx := range secuencias {
+				var nuevasSecuencias []Secuencia
+				for _, sec := range secuencias[dirIdx] {
+					if sec.Semaforo != sem {
+						nuevasSecuencias = append(nuevasSecuencias, sec)
+					}
+				}
+				secuencias[dirIdx] = nuevasSecuencias
+			}
+
+			for dirIdx := range botonesSemaforos {
+				var nuevosBotones []*widget.Button
+				nuevosBotones = append(nuevosBotones, botonesSemaforos[dirIdx]...)
+				botonesSemaforos[dirIdx] = nuevosBotones
+			}
+
+			for _, cont := range layoutsSemaforos {
+				if cont == nil {
+					continue
+				}
+				var nuevosObjs []fyne.CanvasObject
+				for _, obj := range cont.Objects {
+					if img, ok := obj.(*canvas.Image); ok && img == sem {
+						continue
+					}
+					nuevosObjs = append(nuevosObjs, obj)
+				}
+				cont.Objects = nuevosObjs
+				cont.Refresh()
+			}
+
+			var nuevosObjs []fyne.CanvasObject
+			for _, obj := range layoutComponentes.Objects {
+				if img, ok := obj.(*canvas.Image); ok && img == sem {
+					continue
+				}
+				nuevosObjs = append(nuevosObjs, obj)
+			}
+			layoutComponentes.Objects = nuevosObjs
+			layoutComponentes.Refresh()
+
+			d.Hide()
+			onDelete()
+		}, w)
+	})
+	cBotones.Add(btnBorrar)
 
 	btnGuardar := widget.NewButton("Guardar", func() {
 		s := obtenerSecuencia(cSecuencia, sem, dir, pos, w)
