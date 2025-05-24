@@ -59,6 +59,7 @@ var posSemDcha = []fyne.Position{
 // ejecución
 var chanEjecucion = make(chan bool)
 var tickerEjecucion *time.Ticker
+var tickBroadcast = make(chan struct{})
 
 // otros
 var semaforoSize = fyne.NewSize(28, 100)
@@ -1857,16 +1858,16 @@ func borrarSemaforo(c *fyne.Container) {
 }
 
 func ejecucion(cont *fyne.Container) {
-
 	select {
 	case recibido := <-chanEjecucion:
 		if recibido {
-
+			//TODO
 		} else {
-
+			//TODO
 		}
 
 	default:
+		startTickerBroadcast()
 		tickerEjecucion.Stop()
 		for _, secuenciasDir := range secuencias {
 			for _, secuencia := range secuenciasDir {
@@ -1893,6 +1894,7 @@ func ejecucion(cont *fyne.Container) {
 						for {
 							for i, c := range secuencia.Colores {
 								switch c {
+
 								case "Verde":
 									secuencia.Semaforo.Image = semaforos[(3*a)+1]
 									fyne.Do(func() { secuencia.Semaforo.Refresh() })
@@ -1907,8 +1909,8 @@ func ejecucion(cont *fyne.Container) {
 								}
 
 								if c != "Ámbar (parpadeo)" { //el ámbar parpadeante cambia en ambar()
-									for range secuencia.Segundos[i] {
-										<-tickerEjecucion.C
+									for s := 0; s < secuencia.Segundos[i]; s++ {
+										<-tickBroadcast
 									}
 								}
 							}
@@ -1919,4 +1921,13 @@ func ejecucion(cont *fyne.Container) {
 		}
 		tickerEjecucion.Reset(time.Second)
 	}
+}
+
+func startTickerBroadcast() {
+	go func() {
+		for range tickerEjecucion.C {
+			close(tickBroadcast)
+			tickBroadcast = make(chan struct{})
+		}
+	}()
 }
