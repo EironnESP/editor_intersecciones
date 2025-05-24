@@ -31,18 +31,18 @@ var images embed.FS
 // VARIABLES GLOBALES
 var home, _ = os.UserHomeDir()
 var modoEdicion = false
+
+// imágenes
 var flechas []image.Image
 var semaforos []image.Image
 var otrasMarcas []image.Image
+
+// contenedores
 var layoutsMarcas = make([]*fyne.Container, 4)
 var layoutsSemaforos = make([]*fyne.Container, 8)
-var semaforoSize = fyne.NewSize(28, 100)
-var numDirecciones = 0
-var secuencias = make([][]Secuencia, 5)
-var botonesSemaforos = make([][]*widget.Button, 5)
 var layoutComponentes *fyne.Container
-var colores = []string{"Verde", "Ámbar", "Ámbar (parpadeo)", "Rojo"}
-var fasesCopiada Secuencia
+
+// posiciones
 var posSemIzqda = []fyne.Position{
 	fyne.NewPos(163, 255), // dir 1
 	fyne.NewPos(255, 730), // dir 2
@@ -55,6 +55,18 @@ var posSemDcha = []fyne.Position{
 	fyne.NewPos(730, 255), // dir 3
 	fyne.NewPos(255, 163), // dir 4
 }
+
+// ejecución
+var chanEjecucion = make(chan bool)
+var tickerEjecucion *time.Ticker
+
+// otros
+var semaforoSize = fyne.NewSize(28, 100)
+var numDirecciones = 0
+var secuencias = make([][]Secuencia, 5)
+var botonesSemaforos = make([][]*widget.Button, 5)
+var colores = []string{"Verde", "Ámbar", "Ámbar (parpadeo)", "Rojo"}
+var fasesCopiada Secuencia
 
 // 0 centro, 1 fuera
 var numCarrilesPrevios = make([]int, 2)
@@ -144,8 +156,12 @@ func main() {
 	)
 
 	barraHerramientasEjecucion := widget.NewToolbar(
-		widget.NewToolbarAction(theme.MediaPlayIcon(), func() {}),
-		widget.NewToolbarAction(theme.MediaPauseIcon(), func() {}),
+		widget.NewToolbarAction(theme.MediaPlayIcon(), func() {
+			chanEjecucion <- true
+		}),
+		widget.NewToolbarAction(theme.MediaPauseIcon(), func() {
+			chanEjecucion <- false
+		}),
 		widget.NewToolbarAction(theme.MediaReplayIcon(), func() {}),
 	)
 
@@ -161,6 +177,10 @@ func main() {
 		if t.Text == "Ejecución" { //OCULTAR BOTONES EN VISTA DE EJECUCION
 			modoEdicion = false
 			colocarBotones(nil, layoutBotonesEditar, numDirecciones, true, modoEdicion)
+			tickerEjecucion = time.NewTicker(time.Second)
+			go ejecucion(layoutComponentes)
+		} else {
+			tickerEjecucion = nil
 		}
 	}
 
@@ -625,36 +645,21 @@ func cargarOtrasMarcas(a fyne.App) {
 	otrasMarcas = append(otrasMarcas, f)
 }
 
-func ambar(sem *canvas.Image, c *fyne.Container, permanente bool) {
-	pos := getPosicionEnContainer(sem, c)
+func ambar(sem *canvas.Image, dir, segundos int) {
 	tick := time.NewTicker(time.Second)
 
-	imagen := c.Objects[pos].(*canvas.Image)
+	for i := 0; i < segundos/2; i++ {
+		sem.Image = semaforos[(3*dir)+2]
+		fyne.Do(func() { sem.Refresh() })
+		<-tick.C
 
-	if permanente {
-		for {
-			imagen.Image = semaforos[2]
-			fyne.Do(func() { imagen.Refresh() })
-			<-tick.C
-
-			imagen.Image = semaforos[0]
-			fyne.Do(func() { imagen.Refresh() })
-			<-tick.C
-		}
-	} else {
-		for i := 0; i < 10; i++ {
-			imagen.Image = semaforos[2]
-			fyne.Do(func() { imagen.Refresh() })
-			<-tick.C
-
-			imagen.Image = semaforos[0]
-			fyne.Do(func() { imagen.Refresh() })
-			<-tick.C
-		}
+		sem.Image = semaforos[0]
+		fyne.Do(func() { sem.Refresh() })
+		<-tick.C
 	}
 
-	imagen.Image = semaforos[1]
-	fyne.Do(func() { imagen.Refresh() })
+	sem.Image = semaforos[1]
+	fyne.Do(func() { sem.Refresh() })
 }
 
 func colocarBotones(w fyne.Window, cBotones *fyne.Container, numDir int, inicializado, editar bool) {
@@ -781,13 +786,9 @@ func menuEdicion(dir int, w fyne.Window) {
 		//BORRAR SEMAFORO ENTRANTE SI LO HAY Y YA NO HAY CARRILES ENTRANTES
 		if numCarrilesCentro == 0 && cDerecha != nil && len(cDerecha.Objects) > 0 {
 			borrarSemaforo(cDerecha)
-			fmt.Println(1)
-
 			//BORRAR AL OTRO LADO SI SOLO HABÍA 1 DIRECCIÓN
 			if numCarrilesFuera == 0 && cIzquierda != nil && len(cIzquierda.Objects) > 0 {
 				borrarSemaforo(cIzquierda)
-				fmt.Println(2)
-
 			} else if len(cIzquierda.Objects) > 0 { //SI HAY SEMAFOROS EN SENTIDO CONTRARIO SE DUPLICAN
 				for _, sem := range cIzquierda.Objects {
 					if sem, ok := sem.(*canvas.Image); ok {
@@ -797,15 +798,11 @@ func menuEdicion(dir int, w fyne.Window) {
 			}
 		} else { //borrarSemaforo() YA LO REFRESCA, NO TIENE QUE HACERLO 2 VECES
 			layoutComponentes.Refresh()
-			fmt.Println(3)
-
 		}
 
 		//BORRAR SEMAFORO DEL OTRO LADO AL AÑADIR CARRILES EN ESTE SENTIDO
 		if numCarrilesPrevios[0] == 0 && cDerecha != nil && len(cDerecha.Objects) > 0 {
 			borrarSemaforo(cDerecha)
-			fmt.Println(4)
-
 		}
 
 		numCarrilesPrevios[0] = numCarrilesCentro
@@ -836,11 +833,9 @@ func menuEdicion(dir int, w fyne.Window) {
 		//BORRAR SEMAFORO SALIENTE SI LO HAY Y YA NO HAY CARRILES SALIENTES
 		if numCarrilesFuera == 0 && cIzquierda != nil && len(cIzquierda.Objects) > 0 {
 			borrarSemaforo(cIzquierda)
-			fmt.Println("A")
 			//BORRAR AL OTRO LADO SI SOLO HABÍA 1 DIRECCIÓN
 			if numCarrilesCentro == 0 && cDerecha != nil && len(cDerecha.Objects) > 0 {
 				borrarSemaforo(cDerecha)
-				fmt.Println("B")
 			} else if len(cDerecha.Objects) > 0 { //SI HAY SEMAFOROS EN SENTIDO CONTRARIO SE DUPLICAN
 				for _, sem := range cDerecha.Objects {
 					if sem, ok := sem.(*canvas.Image); ok {
@@ -850,15 +845,11 @@ func menuEdicion(dir int, w fyne.Window) {
 			}
 		} else { //borrarSemaforo() YA LO REFRESCA, NO TIENE QUE HACERLO 2 VECES
 			layoutComponentes.Refresh()
-			fmt.Println("C")
-
 		}
 
 		//BORRAR SEMAFORO DEL OTRO LADO AL AÑADIR CARRILES EN ESTE SENTIDO
 		if numCarrilesPrevios[1] == 0 && cIzquierda != nil && len(cIzquierda.Objects) > 0 {
 			borrarSemaforo(cIzquierda)
-			fmt.Println("D")
-
 		}
 
 		numCarrilesPrevios[1] = numCarrilesFuera
@@ -1498,12 +1489,12 @@ func menuAddSemaforos(dir int, w fyne.Window, peatones bool, numCarrilesCentro, 
 }
 
 type Secuencia struct {
-	Semaforo  *canvas.Image   `json:"sem"`
-	Direccion int             `json:"dir"`
-	Colores   []string        `json:"colores"`
-	Tiempos   []time.Duration `json:"tiempos"`
-	Posicion  int             `json:"pos"`
-	Saliente  bool            `json:"saliente"`
+	Semaforo  *canvas.Image `json:"sem"`
+	Direccion int           `json:"dir"`
+	Colores   []string      `json:"colores"`
+	Segundos  []int         `json:"segundos"`
+	Posicion  int           `json:"pos"`
+	Saliente  bool          `json:"saliente"`
 }
 
 // onDelete borra el botón al borrar el semáforo
@@ -1717,7 +1708,7 @@ func menuSecuenciaSemaforos(dir int, w fyne.Window, entrante bool, sem *canvas.I
 
 func obtenerSecuencia(cSecuencia *fyne.Container, sem *canvas.Image, dir int, pos int, w fyne.Window, saliente bool) Secuencia {
 	var colores []string
-	var tiempos []time.Duration
+	var segundos []int
 
 	for _, fase := range cSecuencia.Objects {
 		if comboBox, ok := fase.(*widget.Select); ok {
@@ -1727,7 +1718,7 @@ func obtenerSecuencia(cSecuencia *fyne.Container, sem *canvas.Image, dir int, po
 				entry.Text = "0"
 			}
 			if i, err := strconv.Atoi(entry.Text); err == nil {
-				tiempos = append(tiempos, time.Second*time.Duration(i))
+				segundos = append(segundos, i)
 			} else {
 				mostrarError(err.Error(), fyne.CurrentApp(), w)
 			}
@@ -1738,7 +1729,7 @@ func obtenerSecuencia(cSecuencia *fyne.Container, sem *canvas.Image, dir int, po
 		sem,
 		dir,
 		colores,
-		tiempos,
+		segundos,
 		pos,
 		saliente,
 	}
@@ -1747,7 +1738,6 @@ func obtenerSecuencia(cSecuencia *fyne.Container, sem *canvas.Image, dir int, po
 }
 
 func colocarFases(coloresUsados []string, sec Secuencia, cSecuencia *fyne.Container) []string {
-	//fmt.Println("Colocando: ", sec)
 	for i, color := range sec.Colores {
 		//SIMILAR AL FUNCIONAMIENTO DE "AÑADIR FASE" PERO COMPLETANDO DATOS
 		var coloresRecortado []string
@@ -1770,7 +1760,7 @@ func colocarFases(coloresUsados []string, sec Secuencia, cSecuencia *fyne.Contai
 				inputTiempo.Text = ""
 			}
 		}
-		inputTiempo.Text = strconv.Itoa(int(sec.Tiempos[i].Seconds()))
+		inputTiempo.Text = strconv.Itoa(int(sec.Segundos[i]))
 		cSecuencia.Add(inputTiempo)
 
 		var btnBorrar *widget.Button
@@ -1846,7 +1836,7 @@ func borrarSemaforo(c *fyne.Container) {
 			semsABorrar = append(semsABorrar, sem)
 		}
 	}
-	// Borra solo del container recibido
+
 	var nuevosObjs []fyne.CanvasObject
 	for _, obj := range c.Objects {
 		borrar := false
@@ -1864,4 +1854,69 @@ func borrarSemaforo(c *fyne.Container) {
 	}
 	c.Objects = nuevosObjs
 	c.Refresh()
+}
+
+func ejecucion(cont *fyne.Container) {
+
+	select {
+	case recibido := <-chanEjecucion:
+		if recibido {
+
+		} else {
+
+		}
+
+	default:
+		tickerEjecucion.Stop()
+		for _, secuenciasDir := range secuencias {
+			for _, secuencia := range secuenciasDir {
+				//comprobar que la secuencia esté rellena
+				if secuencia.Direccion > 0 {
+					fmt.Println(secuencia)
+					//dirección de la flecha del semáforo
+					var a int
+
+					switch secuencia.Semaforo.Image {
+					case semaforos[3]: //sin flecha
+						a = 0
+					case semaforos[6]: //derecha
+						a = 1
+					case semaforos[9]: //recto
+						a = 2
+					case semaforos[12]: //izquierda
+						a = 3
+					}
+
+					fmt.Println(a)
+
+					go func(cont *fyne.Container) {
+						for {
+							for i, c := range secuencia.Colores {
+								switch c {
+								case "Verde":
+									secuencia.Semaforo.Image = semaforos[(3*a)+1]
+									fyne.Do(func() { secuencia.Semaforo.Refresh() })
+								case "Ámbar":
+									secuencia.Semaforo.Image = semaforos[(3*a)+2]
+									fyne.Do(func() { secuencia.Semaforo.Refresh() })
+								case "Ámbar (parpadeo)":
+									ambar(secuencia.Semaforo, a, secuencia.Segundos[i])
+								case "Rojo":
+									secuencia.Semaforo.Image = semaforos[(3*a)+3]
+									fyne.Do(func() { secuencia.Semaforo.Refresh() })
+								}
+
+								if c != "Ámbar (parpadeo)" { //el ámbar parpadeante cambia en ambar()
+									for range secuencia.Segundos[i] {
+										<-tickerEjecucion.C
+									}
+								}
+							}
+						}
+					}(cont)
+				}
+			}
+		}
+		tickerEjecucion.Reset(time.Second)
+	}
 }
