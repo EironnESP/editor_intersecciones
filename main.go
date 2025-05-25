@@ -57,9 +57,10 @@ var posSemDcha = []fyne.Position{
 }
 
 // ejecución
-var chanEjecucion = make(chan bool)
 var tickerEjecucion *time.Ticker
 var tickBroadcast = make(chan struct{})
+var pausado = false
+var chanParar = make(chan struct{})
 
 // otros
 var semaforoSize = fyne.NewSize(28, 100)
@@ -158,12 +159,15 @@ func main() {
 
 	barraHerramientasEjecucion := widget.NewToolbar(
 		widget.NewToolbarAction(theme.MediaPlayIcon(), func() {
-			chanEjecucion <- true
+			pausado = false
 		}),
 		widget.NewToolbarAction(theme.MediaPauseIcon(), func() {
-			chanEjecucion <- false
+			pausado = true
 		}),
-		widget.NewToolbarAction(theme.MediaReplayIcon(), func() {}),
+		widget.NewToolbarAction(theme.MediaReplayIcon(), func() {
+			pararEjecucion()
+			go ejecucion(layoutComponentes)
+		}),
 	)
 
 	contentEdicion := container.NewBorder(nil, nil, container.NewVBox(barraHerramientasEdicion), nil, fondo)
@@ -181,7 +185,7 @@ func main() {
 			tickerEjecucion = time.NewTicker(time.Second)
 			go ejecucion(layoutComponentes)
 		} else {
-			tickerEjecucion = nil
+			pararEjecucion()
 		}
 	}
 
@@ -1369,9 +1373,9 @@ func menuAddSemaforos(dir int, w fyne.Window, peatones bool, numCarrilesCentro, 
 
 		if haySaliente {
 			btnAddSemaforoFuera.Disable()
-			b := widget.NewButton("Semáforo saliente", func() {
+			var b *widget.Button
+			b = widget.NewButton("Semáforo saliente", func() {
 				if sem, ok := cIzquierda.Objects[0].(*canvas.Image); ok {
-					var b *widget.Button
 					menuSecuenciaSemaforos(dir, w, false, sem, getPosicionEnArray(sem, cIzquierda.Objects), func() {
 						cBotones.Remove(b)
 						cBotones.Refresh()
@@ -1411,8 +1415,8 @@ func menuAddSemaforos(dir int, w fyne.Window, peatones bool, numCarrilesCentro, 
 			}
 
 			//crear boton
-			b := widget.NewButton("Semáforo entrante", func() {
-				var b *widget.Button
+			var b *widget.Button
+			b = widget.NewButton("Semáforo entrante", func() {
 				menuSecuenciaSemaforos(dir, w, true, sem, getPosicionEnArray(sem, cDerecha.Objects), func() {
 					cBotones.Remove(b)
 					cBotones.Refresh()
@@ -1445,9 +1449,9 @@ func menuAddSemaforos(dir int, w fyne.Window, peatones bool, numCarrilesCentro, 
 					btnAddSemaforoDentro.Disable()
 				}
 
-				b := widget.NewButton("Semáforo entrante", func() {
+				var b *widget.Button
+				b = widget.NewButton("Semáforo entrante", func() {
 					if sem, ok := obj.(*canvas.Image); ok {
-						var b *widget.Button
 						menuSecuenciaSemaforos(dir, w, true, sem, getPosicionEnArray(sem, cDerecha.Objects), func() {
 							cBotones.Remove(b)
 							cBotones.Refresh()
@@ -1496,6 +1500,7 @@ type Secuencia struct {
 	Segundos  []int         `json:"segundos"`
 	Posicion  int           `json:"pos"`
 	Saliente  bool          `json:"saliente"`
+	DirFlecha int           `json:"dirflecha"`
 }
 
 // onDelete borra el botón al borrar el semáforo
@@ -1503,6 +1508,7 @@ func menuSecuenciaSemaforos(dir int, w fyne.Window, entrante bool, sem *canvas.I
 	c := container.NewVBox()
 	var opciones []string
 	cSecuencia := container.New(layout.NewGridLayout(3))
+	dirFlecha := 0
 
 	//si es entrante puede cambiar la dirección
 	if entrante {
@@ -1527,15 +1533,19 @@ func menuSecuenciaSemaforos(dir int, w fyne.Window, entrante bool, sem *canvas.I
 			case "General":
 				sem.Image = semaforos[3]
 				sem.Refresh()
+				dirFlecha = 0
 			case "Derecha":
 				sem.Image = semaforos[6]
 				sem.Refresh()
+				dirFlecha = 1
 			case "Frente":
 				sem.Image = semaforos[9]
 				sem.Refresh()
+				dirFlecha = 2
 			case "Izquierda":
 				sem.Image = semaforos[12]
 				sem.Refresh()
+				dirFlecha = 3
 			}
 		})
 
@@ -1619,7 +1629,7 @@ func menuSecuenciaSemaforos(dir int, w fyne.Window, entrante bool, sem *canvas.I
 	cBotones := container.New(layout.NewGridLayout(5))
 
 	btnCopiar := widget.NewButton("Copiar fases", func() {
-		fasesCopiada = obtenerSecuencia(cSecuencia, sem, dir, pos, w, false)
+		fasesCopiada = obtenerSecuencia(cSecuencia, sem, dir, dirFlecha, pos, w, false)
 	})
 	cBotones.Add(btnCopiar)
 
@@ -1678,7 +1688,7 @@ func menuSecuenciaSemaforos(dir int, w fyne.Window, entrante bool, sem *canvas.I
 	cBotones.Add(btnBorrar)
 
 	btnGuardar := widget.NewButton("Guardar", func() {
-		s := obtenerSecuencia(cSecuencia, sem, dir, pos, w, !entrante)
+		s := obtenerSecuencia(cSecuencia, sem, dir, dirFlecha, pos, w, !entrante)
 
 		//SE ALMACENAN LAS SECUENCIAS, SI YA ESTABAN ALMACENADAS SE SOBREESCRIBEN
 		existe := false
@@ -1707,7 +1717,7 @@ func menuSecuenciaSemaforos(dir int, w fyne.Window, entrante bool, sem *canvas.I
 	d.Show()
 }
 
-func obtenerSecuencia(cSecuencia *fyne.Container, sem *canvas.Image, dir int, pos int, w fyne.Window, saliente bool) Secuencia {
+func obtenerSecuencia(cSecuencia *fyne.Container, sem *canvas.Image, dir, dirFlecha int, pos int, w fyne.Window, saliente bool) Secuencia {
 	var colores []string
 	var segundos []int
 
@@ -1733,6 +1743,7 @@ func obtenerSecuencia(cSecuencia *fyne.Container, sem *canvas.Image, dir int, po
 		segundos,
 		pos,
 		saliente,
+		dirFlecha,
 	}
 
 	return s
@@ -1858,76 +1869,90 @@ func borrarSemaforo(c *fyne.Container) {
 }
 
 func ejecucion(cont *fyne.Container) {
-	select {
-	case recibido := <-chanEjecucion:
-		if recibido {
-			//TODO
-		} else {
-			//TODO
-		}
+	startTickerBroadcast()
+	tickerEjecucion.Stop()
+	for _, secuenciasDir := range secuencias {
+		for _, secuencia := range secuenciasDir {
+			//comprobar que la secuencia esté rellena
+			if secuencia.Direccion > 0 {
+				fmt.Println(secuencia)
 
-	default:
-		startTickerBroadcast()
-		tickerEjecucion.Stop()
-		for _, secuenciasDir := range secuencias {
-			for _, secuencia := range secuenciasDir {
-				//comprobar que la secuencia esté rellena
-				if secuencia.Direccion > 0 {
-					fmt.Println(secuencia)
-					//dirección de la flecha del semáforo
-					var a int
-
-					switch secuencia.Semaforo.Image {
-					case semaforos[3]: //sin flecha
-						a = 0
-					case semaforos[6]: //derecha
-						a = 1
-					case semaforos[9]: //recto
-						a = 2
-					case semaforos[12]: //izquierda
-						a = 3
-					}
-
-					fmt.Println(a)
-
-					go func(cont *fyne.Container) {
-						for {
-							for i, c := range secuencia.Colores {
+				go func(cont *fyne.Container) {
+					for {
+						for i, c := range secuencia.Colores {
+							select {
+							case <-chanParar: //parar
+								return
+							default:
 								switch c {
 
 								case "Verde":
-									secuencia.Semaforo.Image = semaforos[(3*a)+1]
+									secuencia.Semaforo.Image = semaforos[(3*secuencia.DirFlecha)+1]
 									fyne.Do(func() { secuencia.Semaforo.Refresh() })
 								case "Ámbar":
-									secuencia.Semaforo.Image = semaforos[(3*a)+2]
+									secuencia.Semaforo.Image = semaforos[(3*secuencia.DirFlecha)+2]
 									fyne.Do(func() { secuencia.Semaforo.Refresh() })
 								case "Ámbar (parpadeo)":
-									ambar(secuencia.Semaforo, a, secuencia.Segundos[i])
+									ambar(secuencia.Semaforo, secuencia.DirFlecha, secuencia.Segundos[i])
 								case "Rojo":
-									secuencia.Semaforo.Image = semaforos[(3*a)+3]
+									secuencia.Semaforo.Image = semaforos[(3*secuencia.DirFlecha)+3]
 									fyne.Do(func() { secuencia.Semaforo.Refresh() })
 								}
 
 								if c != "Ámbar (parpadeo)" { //el ámbar parpadeante cambia en ambar()
 									for s := 0; s < secuencia.Segundos[i]; s++ {
-										<-tickBroadcast
+										select {
+										case <-chanParar:
+											return
+										case <-tickBroadcast:
+										}
 									}
 								}
 							}
 						}
-					}(cont)
-				}
+					}
+				}(cont)
 			}
 		}
-		tickerEjecucion.Reset(time.Second)
 	}
+	tickerEjecucion.Reset(time.Second)
 }
 
 func startTickerBroadcast() {
 	go func() {
-		for range tickerEjecucion.C {
-			close(tickBroadcast)
-			tickBroadcast = make(chan struct{})
+		for {
+			select {
+			case <-tickerEjecucion.C:
+				if pausado {
+					//si se pausa espera a que se quite para seguir
+					for pausado {
+						time.Sleep(50 * time.Millisecond)
+					}
+				}
+				close(tickBroadcast)
+				tickBroadcast = make(chan struct{})
+			}
 		}
 	}()
+}
+
+func pararEjecucion() {
+	pausado = false
+	tickerEjecucion.Stop()
+	close(chanParar)
+	chanParar = make(chan struct{})
+	tickBroadcast = make(chan struct{})
+	tickerEjecucion = time.NewTicker(time.Second)
+
+	//VOLVER A COLOCAR LOS SEMÁFOROS EN ROJO CON SU FLECHA (SI TIENE)
+	for _, secuenciasDir := range secuencias {
+		for _, secuencia := range secuenciasDir {
+			//comprobar que la secuencia esté rellena
+			if secuencia.Direccion > 0 {
+				secuencia.Semaforo.Image = semaforos[(3*secuencia.DirFlecha)+3]
+				secuencia.Semaforo.Refresh()
+			}
+		}
+
+	}
 }
