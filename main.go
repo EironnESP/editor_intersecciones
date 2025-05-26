@@ -9,6 +9,7 @@ import (
 	"os"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"Editor_Intersecciones/layouts"
@@ -31,6 +32,8 @@ var images embed.FS
 // VARIABLES GLOBALES
 var home, _ = os.UserHomeDir()
 var modoEdicion = false
+var id = -1
+var nombre = ""
 
 // imágenes
 var flechas []image.Image
@@ -69,6 +72,7 @@ var secuencias = make([][]Secuencia, 5)
 var botonesSemaforos = make([][]*widget.Button, 5)
 var colores = []string{"Verde", "Ámbar", "Ámbar (parpadeo)", "Rojo"}
 var fasesCopiada Secuencia
+var pasosPeatones = make([]bool, 4)
 
 // 0 centro, 1 fuera
 var numCarrilesPrevios = make([]int, 2)
@@ -133,9 +137,16 @@ func main() {
 	//BARRAS DE HERRAMIENTAS
 	barraHerramientasEdicion := widget.NewToolbar(
 		widget.NewToolbarAction(theme.DocumentSaveIcon(), func() {
-			//HACER EN ACCESO A DATOS
-			fmt.Println("guardar diseño")
-			fmt.Println(secuencias)
+			entryNombre := widget.NewEntry()
+			entryNombre.SetText(nombre)
+
+			fi := []*widget.FormItem{{Text: "Nombre del diseño:", Widget: entryNombre}}
+
+			dialogNombre := dialog.NewForm("Guardar", "Guardar diseño", "Cancelar", fi, func(b bool) {
+				fmt.Println(b, entryNombre.Text)
+			}, w)
+			dialogNombre.Show()
+			//guardarBBDD(nombre)
 		}),
 		widget.NewToolbarSeparator(),
 		widget.NewToolbarAction(theme.DocumentCreateIcon(), func() {
@@ -226,44 +237,8 @@ func main() {
 	botonAbrir := widget.NewButton("Abrir diseño guardado", func() {
 		fmt.Println("abrir")
 
-		db, err := sql.Open("sqlite3", home+"/.intersecciones/test.db")
-		if err != nil {
-			mostrarError("Error al abrir la base de datos: "+err.Error(), a)
-			return
-		}
-		defer db.Close()
+		abrirBBDD(c, w, d)
 
-		query := "SELECT nombre, COUNT(*) FROM Intersecciones"
-		rows, err := db.Query(query)
-		if err != nil {
-			mostrarError("Error al consultar la base de datos: "+err.Error(), a)
-			return
-		}
-		c.Objects = c.Objects[:0] //limpiar container
-
-		var nombre string
-		var num int
-
-		for rows.Next() {
-			err = rows.Scan(&nombre, &num)
-			if num == 0 {
-				mostrarError("No hay diseños guardados", a, w)
-				d.Hide()
-				return
-			}
-
-			if err != nil {
-				mostrarError("Error al leer la base de datos: "+err.Error(), a)
-				return
-			}
-
-			fmt.Println(nombre)
-			c.Objects = append(c.Objects, widget.NewButton(nombre, func() {
-				d.Hide()
-				fmt.Println("abrir diseño: " + nombre)
-
-			}))
-		}
 	})
 
 	c = container.New(layout.NewVBoxLayout(), botonNuevo, botonAbrir)
@@ -328,40 +303,50 @@ func inicializarDB(home string) error {
 
 		s := `
 		DROP TABLE IF EXISTS Intersecciones;
-		CREATE TABLE Intersecciones(
-			id INTEGER PRIMARY KEY,
-			nombre TEXT, 
-			fecha_ult_mod TEXT,
+		CREATE TABLE Intersecciones (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			nombre TEXT,
 			num_direcciones INTEGER
-			);
+		);
 
 		DROP TABLE IF EXISTS Direcciones;
-		CREATE TABLE Direcciones(
-			id INTEGER PRIMARY KEY,
+		CREATE TABLE Direcciones (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			interseccion_id INTEGER,
-			sentido INTEGER,
-			tiene_semaforos INTEGER,
-			tiene_paso_peatones INTEGER,
+			direccion INTEGER, -- 1 = izqda, 2 = abajo, 3 = dcha, 4 = arriba
+			tiene_paso_peatones INTEGER, 
 			FOREIGN KEY(interseccion_id) REFERENCES Intersecciones(id)
-			ON DELETE CASCADE ON UPDATE CASCADE
-			);
+			ON DELETE CASCADE
+		);
 
-
-
-			
 		DROP TABLE IF EXISTS Carriles;
-		CREATE TABLE Carriles(
-			id INTEGER PRIMARY KEY,
+		CREATE TABLE Carriles (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			interseccion_id INTEGER,
 			direccion_id INTEGER,
-			sentido_in_out INTEGER,
-			sentido_giro INTEGER,
-			posicion INTEGER,
+			sentido INTEGER, -- 0 = centro, 1 = fuera
+			tipo_flecha INTEGER, -- 0 dcha 1 dcha_izqda, 2 fuera, 3 izqda, 4 recto, 5 recto_dcha, 6 recto_izqda, 7 todo
 			FOREIGN KEY(interseccion_id) REFERENCES Intersecciones(id)
-			ON DELETE CASCADE ON UPDATE CASCADE,
+			ON DELETE CASCADE,
 			FOREIGN KEY(direccion_id) REFERENCES Direcciones(id)
-			ON DELETE CASCADE ON UPDATE CASCADE
-			);
+			ON DELETE CASCADE
+		);
+
+		DROP TABLE IF EXISTS Semaforos;
+		CREATE TABLE Semaforos (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			interseccion_id INTEGER,
+			direccion_id INTEGER,
+			colores TEXT, -- separado por ,
+			segundos TEXT, -- separado por ,
+			posicion INTEGER, 
+			saliente INTEGER, -- 0 entrante, 1 saliente
+			dir_flecha INTEGER, -- 0 general, 1 derecha, 2 izquierda, 3 frente
+			FOREIGN KEY(interseccion_id) REFERENCES Intersecciones(id)
+			ON DELETE CASCADE,
+			FOREIGN KEY(direccion_id) REFERENCES Direcciones(id)
+			ON DELETE CASCADE
+		);        
 		`
 		_, err = db.Exec(s)
 
@@ -750,6 +735,7 @@ func menuEdicion(dir int, w fyne.Window) {
 	checkPasoPeatones = widget.NewCheck("Paso de peatones", func(b bool) {
 		modificarPasoPeatones(dir, b)
 		pasoPeatonesActivado = b
+		pasosPeatones[dir-1] = b
 	})
 
 	c.Add(checkPasoPeatones)
@@ -1717,7 +1703,7 @@ func menuSecuenciaSemaforos(dir int, w fyne.Window, entrante bool, sem *canvas.I
 	d.Show()
 }
 
-func obtenerSecuencia(cSecuencia *fyne.Container, sem *canvas.Image, dir, dirFlecha int, pos int, w fyne.Window, saliente bool) Secuencia {
+func obtenerSecuencia(cSecuencia *fyne.Container, sem *canvas.Image, dir, dirFlecha, pos int, w fyne.Window, saliente bool) Secuencia {
 	var colores []string
 	var segundos []int
 
@@ -1954,5 +1940,162 @@ func pararEjecucion() {
 			}
 		}
 
+	}
+}
+
+func guardarBBDD(nombre string) {
+	db, err := sql.Open("sqlite3", home+"/.intersecciones/test.db")
+
+	if err != nil {
+		mostrarError(err.Error(), fyne.CurrentApp())
+	}
+
+	defer db.Close()
+
+	if id != -1 { //DISEÑO YA CREADO, SE BORRA EL ANTERIOR
+		_, err = db.Exec("DELETE FROM Intersecciones WHERE id = ?", id)
+		if err != nil {
+			mostrarError("Error al borrar el diseño anterior: "+err.Error(), fyne.CurrentApp())
+			return
+		}
+	}
+
+	//INSERTAR EN BBDD
+	_, err = db.Exec("INSERT INTO Intersecciones (nombre, num_direcciones) VALUES (?, ?)", nombre, numDirecciones)
+	if err != nil {
+		mostrarError("Error al borrar el diseño anterior: "+err.Error(), fyne.CurrentApp())
+		return
+	}
+
+	//OBTENER EL ID DEL DISEÑO INSERTADO
+	rows, err := db.Query("SELECT id FROM Intersecciones WHERE nombre = ?", nombre)
+	if err != nil {
+		mostrarError("Error al obtener el ID del diseño: "+err.Error(), fyne.CurrentApp())
+		return
+	}
+
+	var id int
+	for rows.Next() {
+		err = rows.Scan(&id)
+		if err != nil {
+			mostrarError("Error al leer el ID del diseño: "+err.Error(), fyne.CurrentApp())
+			return
+		}
+	}
+
+	//INSERTAR DIRECCIONES
+	for dir := 1; dir <= numDirecciones; dir++ {
+		_, err = db.Exec("INSERT INTO Direcciones (interseccion_id, direccion, tiene_paso_peatones) VALUES (?, ?, ?)", id, dir, pasosPeatones[dir-1])
+		if err != nil {
+			mostrarError("Error al insertar la dirección: "+err.Error(), fyne.CurrentApp())
+			return
+		}
+
+		//OBTENER ID DE LA DIRECCIÓN INSERTADA
+		rows, err = db.Query("SELECT id FROM Direcciones WHERE interseccion_id = ? AND direccion = ?", id, dir)
+		if err != nil {
+			mostrarError("Error al obtener el ID de la dirección: "+err.Error(), fyne.CurrentApp())
+			return
+		}
+
+		var idDir int
+		for rows.Next() {
+			err = rows.Scan(&idDir)
+			if err != nil {
+				mostrarError("Error al leer el ID de la dirección: "+err.Error(), fyne.CurrentApp())
+				return
+			}
+		}
+
+		//INSERTAR SEMÁFOROS
+		for _, secuencia := range secuencias[dir-1] {
+			if secuencia.Semaforo == nil {
+				continue //si no hay semáforo no se guarda nada
+			}
+
+			colores := ""
+			if len(secuencia.Colores) > 0 {
+				colores = strings.Join(secuencia.Colores, ",")
+			}
+
+			segundos := ""
+			if len(secuencia.Segundos) > 0 {
+				for i, seg := range secuencia.Segundos {
+					if i == 0 {
+						segundos += strconv.Itoa(seg)
+					} else {
+						segundos += "," + strconv.Itoa(seg)
+					}
+				}
+			}
+
+			_, err = db.Exec(`INSERT INTO Semaforos (interseccion_id, direccion_id, colores, segundos, 
+				posicion, saliente, dir_flecha) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				id, idDir, colores, segundos, secuencia.Posicion, secuencia.Saliente, secuencia.DirFlecha)
+			if err != nil {
+				mostrarError("Error al insertar el semáforo: "+err.Error(), fyne.CurrentApp())
+				return
+			}
+		}
+
+		//INSERTAR CARRILES
+		for _, obj := range layoutsMarcas[dir-1].Objects {
+			if img, ok := obj.(*canvas.Image); ok {
+				dirFlecha := getPosicionFlecha(img.Image, flechas)
+
+				sentidoFlecha := 0
+				if dirFlecha >= 8 && dirFlecha < 11 { //HACIA FUERA
+					sentidoFlecha = 1
+				}
+
+				_, err = db.Exec("INSERT INTO Carriles (interseccion_id, direccion_id, sentido, tipo_flecha) VALUES (?, ?, ?, ?)",
+					id, idDir, sentidoFlecha, dirFlecha%8)
+				if err != nil {
+					mostrarError("Error al insertar el carril: "+err.Error(), fyne.CurrentApp())
+					return
+				}
+			}
+		}
+	}
+}
+
+func abrirBBDD(c *fyne.Container, w fyne.Window, d *dialog.CustomDialog) {
+	db, err := sql.Open("sqlite3", home+"/.intersecciones/test.db")
+	if err != nil {
+		mostrarError("Error al abrir la base de datos: "+err.Error(), fyne.CurrentApp())
+		return
+	}
+	defer db.Close()
+
+	query := "SELECT nombre, COUNT(*) FROM Intersecciones"
+	rows, err := db.Query(query)
+	if err != nil {
+		mostrarError("Error al consultar la base de datos: "+err.Error(), fyne.CurrentApp())
+		return
+	}
+	c.Objects = c.Objects[:0] //limpiar container
+
+	var nombre string
+	var num int
+
+	for rows.Next() {
+		err = rows.Scan(&nombre, &num)
+		if num == 0 {
+			mostrarError("No hay diseños guardados", fyne.CurrentApp(), w)
+			d.Hide()
+			return
+		}
+
+		if err != nil {
+			mostrarError("Error al leer la base de datos: "+err.Error(), fyne.CurrentApp())
+			return
+		}
+
+		fmt.Println(nombre)
+		c.Objects = append(c.Objects, widget.NewButton(nombre, func() {
+			d.Hide()
+			fmt.Println("abrir diseño: " + nombre)
+
+		}))
 	}
 }
