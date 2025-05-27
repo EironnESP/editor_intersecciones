@@ -39,11 +39,13 @@ var nombre = ""
 var flechas []image.Image
 var semaforos []image.Image
 var otrasMarcas []image.Image
+var fondos = make([]image.Image, 2)
 
 // contenedores
 var layoutsMarcas = make([]*fyne.Container, 4)
 var layoutsSemaforos = make([]*fyne.Container, 8)
 var layoutComponentes *fyne.Container
+var layoutBotonesEditar *fyne.Container
 
 // posiciones
 var posSemIzqda = []fyne.Position{
@@ -108,25 +110,12 @@ func main() {
 	cargarFlechas(a)
 	cargarOtrasMarcas(a)
 
-	fondo4, err := getImagen("images/cruces/cruce_vacio.png")
-	if err != nil {
-		mostrarError("Error al cargar la imagen: "+err.Error(), a)
-		a.Run()
-		return
-	}
-
-	fondo3, err := getImagen("images/cruces/cruce3_vacio.png")
-	if err != nil {
-		mostrarError("Error al cargar la imagen: "+err.Error(), a)
-		a.Run()
-		return
-	}
-
 	//FONDO
-	image := canvas.NewImageFromImage(fondo4)
+	cargarFondos(a)
+	image := canvas.NewImageFromImage(fondos[1])
 	image.FillMode = canvas.ImageFillOriginal
 
-	layoutBotonesEditar := container.NewWithoutLayout()
+	layoutBotonesEditar = container.NewWithoutLayout()
 	layoutBotonesEditar.Resize(fyne.NewSize(994, 993))
 
 	layoutComponentes = container.NewWithoutLayout()
@@ -139,14 +128,22 @@ func main() {
 		widget.NewToolbarAction(theme.DocumentSaveIcon(), func() {
 			entryNombre := widget.NewEntry()
 			entryNombre.SetText(nombre)
+			entryNombre.Validator = func(s string) error {
+				if len(s) == 0 {
+					return fmt.Errorf("El nombre no puede estar vacío")
+				} else {
+					return nil
+				}
+			}
 
 			fi := []*widget.FormItem{{Text: "Nombre del diseño:", Widget: entryNombre}}
 
 			dialogNombre := dialog.NewForm("Guardar", "Guardar diseño", "Cancelar", fi, func(b bool) {
-				fmt.Println(b, entryNombre.Text)
+				if b {
+					guardarBBDD(entryNombre.Text)
+				}
 			}, w)
 			dialogNombre.Show()
-			//guardarBBDD(nombre)
 		}),
 		widget.NewToolbarSeparator(),
 		widget.NewToolbarAction(theme.DocumentCreateIcon(), func() {
@@ -211,11 +208,9 @@ func main() {
 	var dDir *dialog.CustomDialog
 
 	botonNuevo := widget.NewButton("Nuevo diseño", func() {
-		fmt.Println("nuevo")
-
 		boton3 := widget.NewButton("3 direcciones", func() {
 			numDirecciones = 3
-			image.Image = fondo3
+			image.Image = fondos[0]
 			image.Refresh()
 			colocarBotones(w, layoutBotonesEditar, numDirecciones, false, modoEdicion)
 			dDir.Hide()
@@ -235,10 +230,7 @@ func main() {
 
 	//HACER EN ACCESO A DATOS
 	botonAbrir := widget.NewButton("Abrir diseño guardado", func() {
-		fmt.Println("abrir")
-
-		abrirBBDD(c, w, d)
-
+		abrirBBDD(c, w, d, image)
 	})
 
 	c = container.New(layout.NewVBoxLayout(), botonNuevo, botonAbrir)
@@ -283,17 +275,17 @@ func mostrarError(e string, a fyne.App, w ...fyne.Window) {
 }
 
 func inicializarDB(home string) error {
-	if _, err := os.Stat(home + "/.intersecciones/"); os.IsNotExist(err) { //futuro: comprobacion version actualizar estructura bbdd
+	if _, err := os.Stat(home + "/.intersecciones/bbdd.db"); os.IsNotExist(err) { //futuro: comprobacion version actualizar estructura bbdd
 		err := os.MkdirAll(home+"/.intersecciones/", 0755)
 		if err != nil {
 			return err
 		}
-		_, err = os.Create(home + "/.intersecciones/test.db")
+		_, err = os.Create(home + "/.intersecciones/bbdd.db")
 		if err != nil {
 			return err
 		}
 
-		db, err := sql.Open("sqlite3", home+"/.intersecciones/test.db")
+		db, err := sql.Open("sqlite3", home+"/.intersecciones/bbdd.db")
 
 		if err != nil {
 			return err
@@ -635,6 +627,23 @@ func cargarOtrasMarcas(a fyne.App) {
 	otrasMarcas = append(otrasMarcas, f)
 }
 
+func cargarFondos(a fyne.App) {
+	var err error
+	fondos[0], err = getImagen("images/cruces/cruce3_vacio.png")
+	if err != nil {
+		mostrarError("Error al cargar la imagen: "+err.Error(), a)
+		a.Run()
+		return
+	}
+
+	fondos[1], err = getImagen("images/cruces/cruce_vacio.png")
+	if err != nil {
+		mostrarError("Error al cargar la imagen: "+err.Error(), a)
+		a.Run()
+		return
+	}
+}
+
 func ambar(sem *canvas.Image, dir, segundos int) {
 	tick := time.NewTicker(time.Second)
 
@@ -776,10 +785,12 @@ func menuEdicion(dir int, w fyne.Window) {
 
 		//BORRAR SEMAFORO ENTRANTE SI LO HAY Y YA NO HAY CARRILES ENTRANTES
 		if numCarrilesCentro == 0 && cDerecha != nil && len(cDerecha.Objects) > 0 {
-			borrarSemaforo(cDerecha)
+			cDerecha.Objects = nil
+			cDerecha.Refresh()
 			//BORRAR AL OTRO LADO SI SOLO HABÍA 1 DIRECCIÓN
 			if numCarrilesFuera == 0 && cIzquierda != nil && len(cIzquierda.Objects) > 0 {
-				borrarSemaforo(cIzquierda)
+				cIzquierda.Objects = nil
+				cIzquierda.Refresh()
 			} else if len(cIzquierda.Objects) > 0 { //SI HAY SEMAFOROS EN SENTIDO CONTRARIO SE DUPLICAN
 				for _, sem := range cIzquierda.Objects {
 					if sem, ok := sem.(*canvas.Image); ok {
@@ -787,13 +798,14 @@ func menuEdicion(dir int, w fyne.Window) {
 					}
 				}
 			}
-		} else { //borrarSemaforo() YA LO REFRESCA, NO TIENE QUE HACERLO 2 VECES
+		} else {
 			layoutComponentes.Refresh()
 		}
 
 		//BORRAR SEMAFORO DEL OTRO LADO AL AÑADIR CARRILES EN ESTE SENTIDO
 		if numCarrilesPrevios[0] == 0 && cDerecha != nil && len(cDerecha.Objects) > 0 {
-			borrarSemaforo(cDerecha)
+			cDerecha.Objects = nil
+			cDerecha.Refresh()
 		}
 
 		numCarrilesPrevios[0] = numCarrilesCentro
@@ -823,10 +835,12 @@ func menuEdicion(dir int, w fyne.Window) {
 
 		//BORRAR SEMAFORO SALIENTE SI LO HAY Y YA NO HAY CARRILES SALIENTES
 		if numCarrilesFuera == 0 && cIzquierda != nil && len(cIzquierda.Objects) > 0 {
-			borrarSemaforo(cIzquierda)
+			cIzquierda.Objects = nil
+			cIzquierda.Refresh()
 			//BORRAR AL OTRO LADO SI SOLO HABÍA 1 DIRECCIÓN
 			if numCarrilesCentro == 0 && cDerecha != nil && len(cDerecha.Objects) > 0 {
-				borrarSemaforo(cDerecha)
+				cDerecha.Objects = nil
+				cDerecha.Refresh()
 			} else if len(cDerecha.Objects) > 0 { //SI HAY SEMAFOROS EN SENTIDO CONTRARIO SE DUPLICAN
 				for _, sem := range cDerecha.Objects {
 					if sem, ok := sem.(*canvas.Image); ok {
@@ -834,13 +848,14 @@ func menuEdicion(dir int, w fyne.Window) {
 					}
 				}
 			}
-		} else { //borrarSemaforo() YA LO REFRESCA, NO TIENE QUE HACERLO 2 VECES
+		} else {
 			layoutComponentes.Refresh()
 		}
 
 		//BORRAR SEMAFORO DEL OTRO LADO AL AÑADIR CARRILES EN ESTE SENTIDO
 		if numCarrilesPrevios[1] == 0 && cIzquierda != nil && len(cIzquierda.Objects) > 0 {
-			borrarSemaforo(cIzquierda)
+			cIzquierda.Objects = nil
+			cIzquierda.Refresh()
 		}
 
 		numCarrilesPrevios[1] = numCarrilesFuera
@@ -894,6 +909,22 @@ func menuEdicion(dir int, w fyne.Window) {
 
 		sliderCarrilesHaciaCentro.Max = float64(4 - numCarrilesFuera)
 		sliderCarrilesHaciaCentro.Refresh()
+	}
+
+	//SI YA HAY SEMÁFOROS SE ACTUALIZAN LOS CONTENEDORES
+	for _, l := range layoutComponentes.Objects {
+		switch dir {
+		case 1, 2, 3, 4:
+			if l.Position() == posSemIzqda[dir-1] {
+				if l, ok := l.(*fyne.Container); ok {
+					cIzquierda = l
+				}
+			} else if l.Position() == posSemDcha[dir-1] {
+				if l, ok := l.(*fyne.Container); ok {
+					cDerecha = l
+				}
+			}
+		}
 	}
 
 	d := dialog.NewCustom(fmt.Sprintf("Editar dirección %d", dir), "Cerrar", c, w)
@@ -1827,33 +1858,6 @@ func recargarColores(cSecuencia *fyne.Container) ([]string, []string) {
 	return coloresUsados, coloresRecortado
 }
 
-func borrarSemaforo(c *fyne.Container) {
-	var semsABorrar []*canvas.Image
-	for _, obj := range c.Objects {
-		if sem, ok := obj.(*canvas.Image); ok {
-			semsABorrar = append(semsABorrar, sem)
-		}
-	}
-
-	var nuevosObjs []fyne.CanvasObject
-	for _, obj := range c.Objects {
-		borrar := false
-		if sem, ok := obj.(*canvas.Image); ok {
-			for _, s := range semsABorrar {
-				if sem == s {
-					borrar = true
-					break
-				}
-			}
-		}
-		if !borrar {
-			nuevosObjs = append(nuevosObjs, obj)
-		}
-	}
-	c.Objects = nuevosObjs
-	c.Refresh()
-}
-
 func ejecucion(cont *fyne.Container) {
 	startTickerBroadcast()
 	tickerEjecucion.Stop()
@@ -1944,7 +1948,7 @@ func pararEjecucion() {
 }
 
 func guardarBBDD(nombre string) {
-	db, err := sql.Open("sqlite3", home+"/.intersecciones/test.db")
+	db, err := sql.Open("sqlite3", home+"/.intersecciones/bbdd.db")
 
 	if err != nil {
 		mostrarError(err.Error(), fyne.CurrentApp())
@@ -2008,66 +2012,79 @@ func guardarBBDD(nombre string) {
 		}
 
 		//INSERTAR SEMÁFOROS
-		for _, secuencia := range secuencias[dir-1] {
-			if secuencia.Semaforo == nil {
-				continue //si no hay semáforo no se guarda nada
-			}
+		if secuencias[dir-1] != nil {
+			for _, secuencia := range secuencias[dir-1] {
+				if secuencia.Semaforo == nil {
+					continue //si no hay semáforo no se guarda nada
+				}
 
-			colores := ""
-			if len(secuencia.Colores) > 0 {
-				colores = strings.Join(secuencia.Colores, ",")
-			}
+				colores := ""
+				if len(secuencia.Colores) > 0 {
+					colores = strings.Join(secuencia.Colores, ",")
+				}
 
-			segundos := ""
-			if len(secuencia.Segundos) > 0 {
-				for i, seg := range secuencia.Segundos {
-					if i == 0 {
-						segundos += strconv.Itoa(seg)
-					} else {
-						segundos += "," + strconv.Itoa(seg)
+				segundos := ""
+				if len(secuencia.Segundos) > 0 {
+					for i, seg := range secuencia.Segundos {
+						if i == 0 {
+							segundos += strconv.Itoa(seg)
+						} else {
+							segundos += "," + strconv.Itoa(seg)
+						}
 					}
 				}
-			}
 
-			_, err = db.Exec(`INSERT INTO Semaforos (interseccion_id, direccion_id, colores, segundos, 
+				_, err = db.Exec(`INSERT INTO Semaforos (interseccion_id, direccion_id, colores, segundos, 
 				posicion, saliente, dir_flecha) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-				id, idDir, colores, segundos, secuencia.Posicion, secuencia.Saliente, secuencia.DirFlecha)
-			if err != nil {
-				mostrarError("Error al insertar el semáforo: "+err.Error(), fyne.CurrentApp())
-				return
+					id, idDir, colores, segundos, secuencia.Posicion, secuencia.Saliente, secuencia.DirFlecha)
+				if err != nil {
+					mostrarError("Error al insertar el semáforo: "+err.Error(), fyne.CurrentApp())
+					return
+				}
 			}
 		}
 
 		//INSERTAR CARRILES
-		for _, obj := range layoutsMarcas[dir-1].Objects {
-			if img, ok := obj.(*canvas.Image); ok {
-				dirFlecha := getPosicionFlecha(img.Image, flechas)
+		if layoutsMarcas[dir-1] != nil {
+			for _, obj := range layoutsMarcas[dir-1].Objects {
+				if img, ok := obj.(*canvas.Image); ok {
+					dirFlecha := getPosicionFlecha(img.Image, flechas)
 
-				sentidoFlecha := 0
-				if dirFlecha >= 8 && dirFlecha < 11 { //HACIA FUERA
-					sentidoFlecha = 1
-				}
+					if dirFlecha != -1 {
+						sentidoFlecha := 0
+						if dirFlecha >= 8 && dirFlecha < 11 { //HACIA FUERA
+							sentidoFlecha = 1
+						}
 
-				_, err = db.Exec("INSERT INTO Carriles (interseccion_id, direccion_id, sentido, tipo_flecha) VALUES (?, ?, ?, ?)",
-					id, idDir, sentidoFlecha, dirFlecha%8)
-				if err != nil {
-					mostrarError("Error al insertar el carril: "+err.Error(), fyne.CurrentApp())
-					return
+						_, err = db.Exec("INSERT INTO Carriles (interseccion_id, direccion_id, sentido, tipo_flecha) VALUES (?, ?, ?, ?)",
+							id, idDir, sentidoFlecha, dirFlecha%8)
+						if err != nil {
+							mostrarError("Error al insertar el carril: "+err.Error(), fyne.CurrentApp())
+							return
+						}
+					}
 				}
 			}
 		}
 	}
 }
 
-func abrirBBDD(c *fyne.Container, w fyne.Window, d *dialog.CustomDialog) {
-	db, err := sql.Open("sqlite3", home+"/.intersecciones/test.db")
+func abrirBBDD(c *fyne.Container, w fyne.Window, d *dialog.CustomDialog, image *canvas.Image) {
+	db, err := sql.Open("sqlite3", home+"/.intersecciones/bbdd.db")
 	if err != nil {
 		mostrarError("Error al abrir la base de datos: "+err.Error(), fyne.CurrentApp())
 		return
 	}
 	defer db.Close()
 
-	query := "SELECT nombre, COUNT(*) FROM Intersecciones"
+	_, err = db.Exec("PRAGMA foreign_keys = ON")
+	if err != nil {
+		mostrarError("Error con la base de datos: "+err.Error(), fyne.CurrentApp())
+		return
+	}
+
+	//COMPROBAR SI HAY DISEÑOS
+	query := "SELECT COUNT(*) FROM Intersecciones"
 	rows, err := db.Query(query)
 	if err != nil {
 		mostrarError("Error al consultar la base de datos: "+err.Error(), fyne.CurrentApp())
@@ -2075,27 +2092,316 @@ func abrirBBDD(c *fyne.Container, w fyne.Window, d *dialog.CustomDialog) {
 	}
 	c.Objects = c.Objects[:0] //limpiar container
 
-	var nombre string
-	var num int
-
 	for rows.Next() {
-		err = rows.Scan(&nombre, &num)
-		if num == 0 {
-			mostrarError("No hay diseños guardados", fyne.CurrentApp(), w)
-			d.Hide()
-			return
-		}
+		var num int
+
+		err = rows.Scan(&num)
 
 		if err != nil {
 			mostrarError("Error al leer la base de datos: "+err.Error(), fyne.CurrentApp())
 			return
 		}
 
-		fmt.Println(nombre)
-		c.Objects = append(c.Objects, widget.NewButton(nombre, func() {
-			d.Hide()
-			fmt.Println("abrir diseño: " + nombre)
-
-		}))
+		if num == 0 {
+			mostrarError("No hay diseños guardados", fyne.CurrentApp())
+			return
+		}
 	}
+
+	query = "SELECT id, nombre FROM Intersecciones"
+	rows, err = db.Query(query)
+	if err != nil {
+		mostrarError("Error al consultar la base de datos: "+err.Error(), fyne.CurrentApp())
+		return
+	}
+	c.Objects = c.Objects[:0] //limpiar container
+
+	for rows.Next() {
+		var nombreDiseno string
+		var idDiseno int
+
+		err = rows.Scan(&idDiseno, &nombreDiseno)
+
+		if err != nil {
+			mostrarError("Error al leer la base de datos: "+err.Error(), fyne.CurrentApp())
+			return
+		}
+
+		var b1, b2 *widget.Button
+
+		b1 = widget.NewButton(nombreDiseno, func() {
+			d.Hide()
+			id = idDiseno //guardar el id del diseño seleccionado
+			nombre = nombreDiseno
+			colocarTodo(image, w)
+		})
+
+		b2 = widget.NewButton("Borrar", func() { //borrar este diseño
+			dialog.ShowConfirm("Borrar diseño", "¿Seguro que quieres borrar este diseño?", func(b bool) {
+				if b {
+					db, err := sql.Open("sqlite3", home+"/.intersecciones/bbdd.db")
+					if err != nil {
+						mostrarError("Error al abrir la base de datos: "+err.Error(), fyne.CurrentApp())
+						return
+					}
+					defer db.Close()
+
+					_, err = db.Exec("DELETE FROM Intersecciones WHERE id = ?", idDiseno)
+					if err != nil {
+						mostrarError("Error al borrar el diseño anterior: "+err.Error(), fyne.CurrentApp())
+						return
+					}
+
+					for i, obj := range c.Objects {
+						if hbox, ok := obj.(*fyne.Container); ok {
+							if len(hbox.Objects) == 2 && hbox.Objects[0] == b1 && hbox.Objects[1] == b2 {
+								c.Objects = append(c.Objects[:i], c.Objects[i+1:]...)
+								break
+							}
+						}
+					}
+					c.Refresh()
+				}
+			}, w)
+		})
+
+		c.Objects = append(c.Objects, container.NewHBox(b1, b2))
+	}
+}
+
+func colocarTodo(image *canvas.Image, w fyne.Window) {
+	db, err := sql.Open("sqlite3", home+"/.intersecciones/bbdd.db")
+	if err != nil {
+		mostrarError("Error al abrir la base de datos: "+err.Error(), fyne.CurrentApp())
+		return
+	}
+	defer db.Close()
+
+	//guardar número de direcciones
+	row := db.QueryRow("SELECT num_direcciones FROM Intersecciones WHERE id = ?", id)
+	err = row.Scan(&numDirecciones)
+	if err != nil {
+		mostrarError("Error al leer el número de direcciones: "+err.Error(), fyne.CurrentApp())
+		return
+	}
+
+	if numDirecciones == 3 {
+		image.Image = fondos[0]
+		image.Refresh()
+		colocarBotones(w, layoutBotonesEditar, numDirecciones, false, modoEdicion)
+	} else {
+		colocarBotones(w, layoutBotonesEditar, numDirecciones, false, modoEdicion)
+	}
+
+	//cargar direcciones y pasos de peatones
+	type Direccion struct {
+		ID           int
+		Num          int
+		PasoPeatones bool
+	}
+	dirs := make([]Direccion, numDirecciones)
+	rows, err := db.Query("SELECT id, direccion, tiene_paso_peatones FROM Direcciones WHERE interseccion_id = ?", id)
+	if err != nil {
+		mostrarError("Error al leer las direcciones: "+err.Error(), fyne.CurrentApp())
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var d Direccion
+		var pasoInt int
+		err = rows.Scan(&d.ID, &d.Num, &pasoInt)
+		if err != nil {
+			mostrarError("Error al leer dirección: "+err.Error(), fyne.CurrentApp())
+			return
+		}
+		d.PasoPeatones = pasoInt != 0
+		if d.Num >= 1 && d.Num <= 4 {
+			dirs[d.Num-1] = d
+			pasosPeatones[d.Num-1] = d.PasoPeatones
+		}
+	}
+
+	//cargar carriles y flechas
+	for i, d := range dirs {
+		if d.ID == 0 {
+			continue
+		}
+		rowsCarril, err := db.Query("SELECT sentido, tipo_flecha FROM Carriles WHERE direccion_id = ?", d.ID)
+		if err != nil {
+			mostrarError("Error al leer los carriles: "+err.Error(), fyne.CurrentApp())
+			return
+		}
+		defer rowsCarril.Close()
+		numCentro, numFuera := 0, 0
+		var tiposCentro, tiposFuera []int
+		for rowsCarril.Next() {
+			var sentido, tipo int
+			err = rowsCarril.Scan(&sentido, &tipo)
+			if err != nil {
+				mostrarError("Error al leer carril: "+err.Error(), fyne.CurrentApp())
+				return
+			}
+			if sentido == 0 {
+				numCentro++
+				tiposCentro = append(tiposCentro, tipo)
+			} else {
+				numFuera++
+				tiposFuera = append(tiposFuera, tipo)
+			}
+		}
+
+		modificarNumCarriles(i+1, numCentro, numFuera)
+
+		idxCentro, idxFuera := 0, 0
+		if layoutsMarcas[i] != nil {
+			for _, obj := range layoutsMarcas[i].Objects {
+				img, ok := obj.(*canvas.Image)
+				if !ok {
+					continue
+				}
+
+				posFlecha := getPosicionFlecha(img.Image, flechas)
+				if posFlecha == -1 {
+					continue
+				}
+				if idxFuera < len(tiposFuera) {
+					if tiposFuera[idxFuera] >= 0 && tiposFuera[idxFuera] < 8 {
+						img.Image = flechas[tiposFuera[idxFuera]+8*i]
+						img.Refresh()
+					}
+					idxFuera++
+				} else if idxCentro < len(tiposCentro) {
+					if tiposCentro[idxCentro] >= 0 && tiposCentro[idxCentro] < 8 {
+						img.Image = flechas[tiposCentro[idxCentro]+8*i]
+						img.Refresh()
+					}
+					idxCentro++
+				}
+			}
+		}
+	}
+
+	//cargar semáforos y secuencias
+	rows, err = db.Query("SELECT direccion_id, colores, segundos, posicion, saliente, dir_flecha FROM Semaforos WHERE interseccion_id = ?", id)
+	if err != nil {
+		mostrarError("Error al leer los semáforos: "+err.Error(), fyne.CurrentApp())
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var dirID, posicion, saliente, dirFlecha int
+		var coloresStr, segundosStr string
+		err = rows.Scan(&dirID, &coloresStr, &segundosStr, &posicion, &saliente, &dirFlecha)
+		if err != nil {
+			mostrarError("Error al leer semáforo: "+err.Error(), fyne.CurrentApp())
+			return
+		}
+
+		// Busca la dirección real (1-4) para este dirID
+		dirNum := -1
+		for _, d := range dirs {
+			if d.ID == dirID {
+				dirNum = d.Num - 1 // d.Num es la dirección real
+				break
+			}
+		}
+		if dirNum == -1 {
+			continue
+		}
+
+		img := canvas.NewImageFromImage(semaforos[(3*dirFlecha)+3])
+		img.FillMode = canvas.ImageFillOriginal
+		img.Resize(semaforoSize)
+
+		var numCentro, numFuera int
+		rowCarril, err := db.Query("SELECT sentido FROM Carriles WHERE direccion_id = ?", dirID)
+		if err == nil {
+			for rowCarril.Next() {
+				var sentido int
+				rowCarril.Scan(&sentido)
+				if sentido == 0 {
+					numCentro++
+				} else if sentido == 1 {
+					numFuera++
+				}
+			}
+			rowCarril.Close()
+		}
+
+		if saliente == 1 {
+			if layoutsSemaforos[dirNum] == nil {
+				layoutsSemaforos[dirNum] = container.New(&layouts.Semaforos{})
+				layoutsSemaforos[dirNum].Move(posSemIzqda[dirNum-1])
+				layoutsSemaforos[dirNum].Resize(fyne.NewSize(90, 100))
+			}
+			layoutsSemaforos[dirNum].Add(img)
+			if numCentro == 0 {
+				if layoutsSemaforos[dirNum+4] == nil {
+					layoutsSemaforos[dirNum+4] = container.New(&layouts.Semaforos{})
+					layoutsSemaforos[dirNum+4].Move(posSemDcha[dirNum-1])
+					layoutsSemaforos[dirNum+4].Resize(fyne.NewSize(90, 100))
+				}
+				layoutsSemaforos[dirNum+4].Add(img)
+			}
+		} else {
+			if layoutsSemaforos[dirNum+4] == nil {
+				layoutsSemaforos[dirNum+4] = container.New(&layouts.Semaforos{})
+				layoutsSemaforos[dirNum+4].Move(posSemDcha[dirNum-1])
+				layoutsSemaforos[dirNum+4].Resize(fyne.NewSize(90, 100))
+			}
+			layoutsSemaforos[dirNum+4].Add(img)
+			if numFuera == 0 {
+				if layoutsSemaforos[dirNum] == nil {
+					layoutsSemaforos[dirNum] = container.New(&layouts.Semaforos{})
+					layoutsSemaforos[dirNum].Move(posSemIzqda[dirNum-1])
+					layoutsSemaforos[dirNum].Resize(fyne.NewSize(90, 100))
+				}
+				layoutsSemaforos[dirNum].Add(img)
+			}
+		}
+
+		coloresArr := strings.Split(coloresStr, ",")
+		segundosArr := strings.Split(segundosStr, ",")
+		var segundosInt []int
+		for _, s := range segundosArr {
+			val, _ := strconv.Atoi(s)
+			segundosInt = append(segundosInt, val)
+		}
+		sec := Secuencia{
+			Semaforo:  img,
+			Direccion: dirNum,
+			Colores:   coloresArr,
+			Segundos:  segundosInt,
+			Posicion:  posicion,
+			Saliente:  saliente == 1,
+			DirFlecha: dirFlecha,
+		}
+		if secuencias[dirNum] == nil {
+			secuencias[dirNum] = []Secuencia{}
+		}
+		secuencias[dirNum] = append(secuencias[dirNum], sec)
+	}
+
+	//añadir layouts de semáforos y marcas al layout principal
+	layoutComponentes.Objects = nil
+	for i := 0; i < 4; i++ {
+		if layoutsMarcas[i] != nil {
+			layoutComponentes.Add(layoutsMarcas[i])
+		}
+		if layoutsSemaforos[i] != nil {
+			layoutComponentes.Add(layoutsSemaforos[i])
+		}
+		if layoutsSemaforos[i+4] != nil {
+			layoutComponentes.Add(layoutsSemaforos[i+4])
+		}
+	}
+
+	//colocar pasos de peatones
+	for i, d := range dirs {
+		if d.PasoPeatones {
+			modificarPasoPeatones(i+1, true)
+		}
+	}
+
+	layoutComponentes.Refresh()
 }
