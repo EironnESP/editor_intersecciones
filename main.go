@@ -125,6 +125,9 @@ func main() {
 
 	//BARRAS DE HERRAMIENTAS
 	barraHerramientasEdicion := widget.NewToolbar(
+		widget.NewToolbarAction(theme.LogoutIcon(), func() {
+			salir(w)
+		}),
 		widget.NewToolbarAction(theme.DocumentSaveIcon(), func() {
 			entryNombre := widget.NewEntry()
 			entryNombre.SetText(nombre)
@@ -140,6 +143,7 @@ func main() {
 
 			dialogNombre := dialog.NewForm("Guardar", "Guardar diseño", "Cancelar", fi, func(b bool) {
 				if b {
+					nombre = entryNombre.Text
 					guardarBBDD(entryNombre.Text)
 				}
 			}, w)
@@ -156,16 +160,20 @@ func main() {
 			}
 		}),
 		widget.NewToolbarAction(theme.VisibilityIcon(), func() {
-			fmt.Println("cambiar orientacion")
+			dialogNoImplementado := dialog.NewCustom("Cambiar orientación", "Cerrar", widget.NewLabel("La funcionalidad para cambiar de orientación el plano aún no está implementada"), w)
+			dialogNoImplementado.Show()
 		}),
 		widget.NewToolbarSpacer(),
 		widget.NewToolbarAction(theme.HelpIcon(), func() {
-			//DISTRIBUCION
-			fmt.Println("ayuda")
+			mostrarAyuda(w)
 		}),
 	)
 
 	barraHerramientasEjecucion := widget.NewToolbar(
+		widget.NewToolbarAction(theme.LogoutIcon(), func() {
+			salir(w)
+		}),
+		widget.NewToolbarSeparator(),
 		widget.NewToolbarAction(theme.MediaPlayIcon(), func() {
 			pausado = false
 		}),
@@ -175,6 +183,10 @@ func main() {
 		widget.NewToolbarAction(theme.MediaReplayIcon(), func() {
 			pararEjecucion()
 			go ejecucion(layoutComponentes)
+		}),
+		widget.NewToolbarSpacer(),
+		widget.NewToolbarAction(theme.HelpIcon(), func() {
+			mostrarAyuda(w)
 		}),
 	)
 
@@ -200,6 +212,9 @@ func main() {
 	tabs.SetTabLocation(container.TabLocationLeading)
 
 	w.SetContent(tabs)
+	w.SetCloseIntercept(func() {
+		salir(w)
+	})
 	w.Show()
 
 	//DIALOG NUEVO DISEÑO O EXISTENTE
@@ -346,10 +361,8 @@ func inicializarDB(home string) error {
 			return err
 		}
 
-		fmt.Println("BBDD creada correctamente")
 		return nil
 	} else {
-		fmt.Println("La base de datos ya existe")
 		return nil
 	}
 }
@@ -644,6 +657,7 @@ func cargarFondos(a fyne.App) {
 	}
 }
 
+// Ámbar parpadeante
 func ambar(sem *canvas.Image, dir, segundos int) {
 	tick := time.NewTicker(time.Second)
 
@@ -661,6 +675,7 @@ func ambar(sem *canvas.Image, dir, segundos int) {
 	fyne.Do(func() { sem.Refresh() })
 }
 
+// Colocación de los botones de menús en cada dirección
 func colocarBotones(w fyne.Window, cBotones *fyne.Container, numDir int, inicializado, editar bool) {
 	if !inicializado {
 		for i := 0; i < numDir; i++ {
@@ -682,8 +697,6 @@ func colocarBotones(w fyne.Window, cBotones *fyne.Container, numDir int, inicial
 			}
 		}
 	} else {
-		fmt.Println("mostrando:", editar)
-
 		for _, boton := range cBotones.Objects {
 			boton := boton.(*widget.Button)
 			boton.Hidden = !editar
@@ -692,6 +705,7 @@ func colocarBotones(w fyne.Window, cBotones *fyne.Container, numDir int, inicial
 	}
 }
 
+// Menú para utilizar el resto de funcionalidades
 func menuEdicion(dir int, w fyne.Window) {
 	c := container.New(layout.NewVBoxLayout())
 	var botonDirCarriles *widget.Button
@@ -931,6 +945,7 @@ func menuEdicion(dir int, w fyne.Window) {
 	d.Show()
 }
 
+// Colocación de pasos de peatones
 func modificarPasoPeatones(dir int, b bool) {
 	if b {
 		pasoPeatones1 := canvas.NewImageFromImage(otrasMarcas[0])
@@ -1011,6 +1026,7 @@ func modificarPasoPeatones(dir int, b bool) {
 	}
 }
 
+// Colocación de carriles
 func modificarNumCarriles(dir int, numCarrilesDentro, numCarrilesFuera int) {
 	layoutsDirs := make([]*fyne.Container, 4)
 
@@ -1246,6 +1262,7 @@ func modificarNumCarriles(dir int, numCarrilesDentro, numCarrilesFuera int) {
 	}
 }
 
+// Menú para cambiar el tipo de flecha de los carriles entrantes
 func modificarDirCarriles(dir int, w fyne.Window) {
 	c := container.New(layout.NewGridLayout(2))
 
@@ -1313,6 +1330,7 @@ func modificarDirCarriles(dir int, w fyne.Window) {
 	d.Show()
 }
 
+// Menú para añadir y seleccionar semáforos
 func menuAddSemaforos(dir int, w fyne.Window, peatones bool, numCarrilesCentro, numCarrilesFuera int, cDerecha, cIzquierda *fyne.Container) (*fyne.Container, *fyne.Container) {
 	cEspacio := container.New(layout.NewGridLayout(4))
 	cBotones := container.New(layout.NewGridLayout(4))
@@ -1351,7 +1369,7 @@ func menuAddSemaforos(dir int, w fyne.Window, peatones bool, numCarrilesCentro, 
 	}
 
 	//BOTON DE CREACION DE SEMAFOROS
-	var btnAddSemaforoFuera, btnAddSemaforoDentro, btnAddSemaforoPeatones *widget.Button
+	var btnAddSemaforoFuera, btnAddSemaforoDentro /*, btnAddSemaforoPeatones*/ *widget.Button
 
 	if numCarrilesFuera != 0 { //HAY CARRILES HACIA FUERA POR LO QUE SE AÑADE BOTON DE SEMAFORO SALIENTE
 		//COMPROBAR SI YA SE HA AÑADIDO UN SEMAFORO SALIENTE
@@ -1481,18 +1499,21 @@ func menuAddSemaforos(dir int, w fyne.Window, peatones bool, numCarrilesCentro, 
 		}
 	}
 
-	if peatones {
-		btnAddSemaforoPeatones = widget.NewButton("Añadir semáforo\npara peatones", func() {
-			b := widget.NewButton("Semáforo peatonal", func() {
-				//TODO
-			})
+	//FUNCIONALIDAD FUTURA: SEMÁFOROS DE PEATONES
+	/*
+		if peatones {
+			btnAddSemaforoPeatones = widget.NewButton("Añadir semáforo\npara peatones", func() {
+				b := widget.NewButton("Semáforo peatonal", func() {
+					//TODO
+				})
 
-			botonesSemaforos[dir] = append(botonesSemaforos[dir], b)
-			cBotones.Add(b)
-			btnAddSemaforoPeatones.Disable() //solo hay 1 pareja de semaforos peatonales
-		})
-		cBotones.Add(btnAddSemaforoPeatones)
-	}
+				botonesSemaforos[dir] = append(botonesSemaforos[dir], b)
+				cBotones.Add(b)
+				btnAddSemaforoPeatones.Disable() //solo hay 1 pareja de semaforos peatonales
+			})
+			cBotones.Add(btnAddSemaforoPeatones)
+		}
+	*/
 
 	d := dialog.NewCustom(fmt.Sprintf("Editar semáforos %d", dir), "Cerrar", container.NewVBox(cEspacio, cBotones), w)
 	d.Show()
@@ -1510,6 +1531,7 @@ func menuAddSemaforos(dir int, w fyne.Window, peatones bool, numCarrilesCentro, 
 	return cDerecha, cIzquierda
 }
 
+// Estructura que guarda los datos de un semáforo
 type Secuencia struct {
 	Semaforo  *canvas.Image `json:"sem"`
 	Direccion int           `json:"dir"`
@@ -1520,8 +1542,8 @@ type Secuencia struct {
 	DirFlecha int           `json:"dirflecha"`
 }
 
-// onDelete borra el botón al borrar el semáforo
-func menuSecuenciaSemaforos(dir int, w fyne.Window, entrante bool, sem *canvas.Image, pos int, onDelete func()) {
+// Mostrar el menú de secuencias de un semáforo
+func menuSecuenciaSemaforos(dir int, w fyne.Window, entrante bool, sem *canvas.Image, pos int, onDelete func()) { //onDelete borra el botón al borrar el semáforo
 	c := container.NewVBox()
 	var opciones []string
 	cSecuencia := container.New(layout.NewGridLayout(3))
@@ -1734,6 +1756,7 @@ func menuSecuenciaSemaforos(dir int, w fyne.Window, entrante bool, sem *canvas.I
 	d.Show()
 }
 
+// Crear la estructura de secuencia para un semáforo
 func obtenerSecuencia(cSecuencia *fyne.Container, sem *canvas.Image, dir, dirFlecha, pos int, w fyne.Window, saliente bool) Secuencia {
 	var colores []string
 	var segundos []int
@@ -1766,6 +1789,7 @@ func obtenerSecuencia(cSecuencia *fyne.Container, sem *canvas.Image, dir, dirFle
 	return s
 }
 
+// Colocar en el menú de secuencias las fases ya creadas
 func colocarFases(coloresUsados []string, sec Secuencia, cSecuencia *fyne.Container) []string {
 	for i, color := range sec.Colores {
 		//SIMILAR AL FUNCIONAMIENTO DE "AÑADIR FASE" PERO COMPLETANDO DATOS
@@ -1807,6 +1831,7 @@ func colocarFases(coloresUsados []string, sec Secuencia, cSecuencia *fyne.Contai
 	return coloresUsados
 }
 
+// Colocar los colores posibles en los ComboBox de las secuencias
 func recargarColores(cSecuencia *fyne.Container) ([]string, []string) {
 	coloresUsados := []string{}
 
@@ -1858,6 +1883,7 @@ func recargarColores(cSecuencia *fyne.Container) ([]string, []string) {
 	return coloresUsados, coloresRecortado
 }
 
+// Activar la ejecución de las secuencias de semáforos
 func ejecucion(cont *fyne.Container) {
 	startTickerBroadcast()
 	tickerEjecucion.Stop()
@@ -1865,8 +1891,6 @@ func ejecucion(cont *fyne.Container) {
 		for _, secuencia := range secuenciasDir {
 			//comprobar que la secuencia esté rellena
 			if secuencia.Direccion > 0 {
-				fmt.Println(secuencia)
-
 				go func(cont *fyne.Container) {
 					for {
 						for i, c := range secuencia.Colores {
@@ -1908,6 +1932,7 @@ func ejecucion(cont *fyne.Container) {
 	tickerEjecucion.Reset(time.Second)
 }
 
+// Comprobación de si se ha pausado para mandar una señal a todos los hilos
 func startTickerBroadcast() {
 	go func() {
 		for {
@@ -1926,6 +1951,7 @@ func startTickerBroadcast() {
 	}()
 }
 
+// Parar la ejecución
 func pararEjecucion() {
 	pausado = false
 	tickerEjecucion.Stop()
@@ -1947,7 +1973,8 @@ func pararEjecucion() {
 	}
 }
 
-func guardarBBDD(nombre string) {
+// Guardar diseño en BBDD
+func guardarBBDD(nombreDesign string) {
 	db, err := sql.Open("sqlite3", home+"/.intersecciones/bbdd.db")
 
 	if err != nil {
@@ -1956,7 +1983,7 @@ func guardarBBDD(nombre string) {
 
 	defer db.Close()
 
-	if id != -1 { //DISEÑO YA CREADO, SE BORRA EL ANTERIOR
+	if nombre != "" { //DISEÑO YA CREADO, SE BORRA EL ANTERIOR
 		_, err = db.Exec("DELETE FROM Intersecciones WHERE id = ?", id)
 		if err != nil {
 			mostrarError("Error al borrar el diseño anterior: "+err.Error(), fyne.CurrentApp())
@@ -1965,14 +1992,14 @@ func guardarBBDD(nombre string) {
 	}
 
 	//INSERTAR EN BBDD
-	_, err = db.Exec("INSERT INTO Intersecciones (nombre, num_direcciones) VALUES (?, ?)", nombre, numDirecciones)
+	_, err = db.Exec("INSERT INTO Intersecciones (nombre, num_direcciones) VALUES (?, ?)", nombreDesign, numDirecciones)
 	if err != nil {
 		mostrarError("Error al borrar el diseño anterior: "+err.Error(), fyne.CurrentApp())
 		return
 	}
 
 	//OBTENER EL ID DEL DISEÑO INSERTADO
-	rows, err := db.Query("SELECT id FROM Intersecciones WHERE nombre = ?", nombre)
+	rows, err := db.Query("SELECT id FROM Intersecciones WHERE nombre = ?", nombreDesign)
 	if err != nil {
 		mostrarError("Error al obtener el ID del diseño: "+err.Error(), fyne.CurrentApp())
 		return
@@ -2069,6 +2096,7 @@ func guardarBBDD(nombre string) {
 	}
 }
 
+// Mostrar diseños guardados
 func abrirBBDD(c *fyne.Container, w fyne.Window, d *dialog.CustomDialog, image *canvas.Image) {
 	db, err := sql.Open("sqlite3", home+"/.intersecciones/bbdd.db")
 	if err != nil {
@@ -2169,6 +2197,7 @@ func abrirBBDD(c *fyne.Container, w fyne.Window, d *dialog.CustomDialog, image *
 	}
 }
 
+// Colocar componentes al abrir un diseño de BBDD
 func colocarTodo(image *canvas.Image, w fyne.Window) {
 	db, err := sql.Open("sqlite3", home+"/.intersecciones/bbdd.db")
 	if err != nil {
@@ -2404,4 +2433,60 @@ func colocarTodo(image *canvas.Image, w fyne.Window) {
 	}
 
 	layoutComponentes.Refresh()
+}
+
+// Abrir menú de ayuda
+func mostrarAyuda(w fyne.Window) {
+	textoAyuda := widget.NewLabel(`Este programa consiste en 2 partes principales:
+	- Edición: en la vista de edición se pueden activar los botones con los que
+	poder modificar cada dirección, creando pasos de peatones, carriles, flechas
+	y semáforos.
+	- Ejecución: en la vista de ejecución se puede ver funcionando a los semáforos
+	que se hayan colocado siguiendo las fases tal y como se hayan diseñado en bucle.
+	
+Guía de ejemplo para crear un diseño:
+	Tras haber elegido el número de direcciones, podemos empezar a editar cada
+	dirección. En los menús de edición podemos modificar todo lo mencionado 
+	anteriormente. Lo ideal es elegir el número de carriles, hasta un máximo de 4, su 
+	sentido y su dirección en primer lugar, junto con pasos de peatones si así lo 
+	queremos. Una vez tenemos todos los carriles hechos, podemos empezar con los 
+	semáforos.
+
+	En el menú de añadir semáforos podemos crear los que queramos, teniendo en cuenta
+	que sólo puede haber 1 en sentido saliente, y hasta 3 en sentido entrante. A su
+	vez, se puede modificar la dirección de los semáforos entrantes. Si creamos más
+	semáforos de los que queremos, entramos en el semáforo y lo podremos borrar.
+
+	Además de la dirección, la función principal de la edición de los semáforos es
+	poder cambiar sus secuencias. Las secuencias se dividen en fases: el tiempo que
+	estará encendido cada color, colocados de forma ordenada, sabiendo que al terminar
+	la última fase la secuencia comenzará de nuevo. Las fases de un semáforo se pueden
+	copiar y pegar en otro, para así replicarlos fácilmente.
+
+	Una vez tenemos todo creado y editado a nuestro gusto, podemos pasar a la vista de
+	ejecución, donde se puede a ver los semáforos cambiando de color tal y como se lo
+	hemos indicado en sus respectivas secuencias. La ejecución se puede parar y
+	reiniciar según queramos. 
+	
+	Una vez hayamos terminado, podemos guardar el diseño completo pulsando el botón de
+	arriba a la izquierda, eligiendo un nombre para el diseño. Si lo guardamos y luego
+	seguimos editando, habrá que guardar de nuevo con el mismo nombre, para así
+	sobreescribirlo.
+
+	Para abrir un diseño guardado, hay que abrir el programa y elegirlo. Para borrarlo,
+	hay que pulsar el botón de "Borrar" a la derecha del nombre del diseño en la pantalla
+	de elección de diseño guardado.
+	`)
+	textoAyuda.Alignment = fyne.TextAlignLeading
+	dialogAyuda := dialog.NewCustom("Ayuda", "Cerrar", textoAyuda, w)
+	dialogAyuda.Show()
+}
+
+func salir(w fyne.Window) {
+	dialogSalir := dialog.NewConfirm("Salir", "¿Seguro que quieres salir? Todo lo que no se haya guardado se perderá", func(b bool) {
+		if b {
+			w.Close()
+		}
+	}, w)
+	dialogSalir.Show()
 }
