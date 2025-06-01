@@ -788,11 +788,15 @@ func menuEdicion(dir int, w fyne.Window) {
 		sliderCarrilesHaciaFuera.Refresh()
 
 		if numCarrilesFuera > 0 || numCarrilesCentro > 0 {
-			botonDirCarriles.Enable()
 			botonSemaforos.Enable()
 		} else {
-			botonDirCarriles.Disable()
 			botonSemaforos.Disable()
+		}
+
+		if numCarrilesCentro > 0 {
+			botonDirCarriles.Enable()
+		} else {
+			botonDirCarriles.Disable()
 		}
 
 		modificarNumCarriles(dir, numCarrilesCentro, numCarrilesFuera)
@@ -838,10 +842,8 @@ func menuEdicion(dir int, w fyne.Window) {
 		sliderCarrilesHaciaCentro.Refresh()
 
 		if numCarrilesFuera > 0 || numCarrilesCentro > 0 {
-			botonDirCarriles.Enable()
 			botonSemaforos.Enable()
 		} else {
-			botonDirCarriles.Disable()
 			botonSemaforos.Disable()
 		}
 
@@ -902,7 +904,9 @@ func menuEdicion(dir int, w fyne.Window) {
 					labelFuera.Text = fmt.Sprintf("Carriles hacia fuera: %d", numCarrilesFuera)
 					labelFuera.Refresh()
 
-					botonDirCarriles.Enable()
+					if numCarrilesCentro > 0 {
+						botonDirCarriles.Enable()
+					}
 					botonSemaforos.Enable()
 				} else if i%2 == 0 {
 					sliderCarrilesHaciaCentro.Value++
@@ -911,7 +915,9 @@ func menuEdicion(dir int, w fyne.Window) {
 					labelCentro.Text = fmt.Sprintf("Carriles hacia el centro: %d", numCarrilesCentro)
 					labelCentro.Refresh()
 
-					botonDirCarriles.Enable()
+					if numCarrilesCentro > 0 {
+						botonDirCarriles.Enable()
+					}
 					botonSemaforos.Enable()
 				}
 				numCarrilesPrevios[0] = numCarrilesCentro
@@ -1266,10 +1272,19 @@ func modificarNumCarriles(dir int, numCarrilesDentro, numCarrilesFuera int) {
 func modificarDirCarriles(dir int, w fyne.Window) {
 	c := container.New(layout.NewGridLayout(2))
 
-	//RECORRERSE LOS CARRILES Y COLOCAR BOTONES
-	for _, obj := range layoutsMarcas[dir-1].Objects {
-		textoBtn := ""
+	// RECORRER LOS CARRILES Y COLOCAR BOTONES
+	var objs []fyne.CanvasObject
+	if dir == 3 || dir == 4 {
+		// Recorrer en orden inverso para 3 y 4
+		for i := len(layoutsMarcas[dir-1].Objects) - 1; i >= 0; i-- {
+			objs = append(objs, layoutsMarcas[dir-1].Objects[i])
+		}
+	} else {
+		objs = layoutsMarcas[dir-1].Objects
+	}
 
+	for _, obj := range objs {
+		textoBtn := ""
 		if obj, ok := obj.(*canvas.Image); ok {
 			switch getPosicionFlecha(obj.Image, flechas) % 8 {
 			case 0: //dcha
@@ -1983,6 +1998,12 @@ func guardarBBDD(nombreDesign string) {
 
 	defer db.Close()
 
+	_, err = db.Exec("PRAGMA foreign_keys = ON")
+	if err != nil {
+		mostrarError("Error con la base de datos: "+err.Error(), fyne.CurrentApp())
+		return
+	}
+
 	if nombre != "" { //DISEÑO YA CREADO, SE BORRA EL ANTERIOR
 		_, err = db.Exec("DELETE FROM Intersecciones WHERE id = ?", id)
 		if err != nil {
@@ -2039,8 +2060,8 @@ func guardarBBDD(nombreDesign string) {
 		}
 
 		//INSERTAR SEMÁFOROS
-		if secuencias[dir-1] != nil {
-			for _, secuencia := range secuencias[dir-1] {
+		if secuencias[dir] != nil {
+			for _, secuencia := range secuencias[dir] {
 				if secuencia.Semaforo == nil {
 					continue //si no hay semáforo no se guarda nada
 				}
@@ -2076,13 +2097,11 @@ func guardarBBDD(nombreDesign string) {
 			for _, obj := range layoutsMarcas[dir-1].Objects {
 				if img, ok := obj.(*canvas.Image); ok {
 					dirFlecha := getPosicionFlecha(img.Image, flechas)
-
 					if dirFlecha != -1 {
 						sentidoFlecha := 0
-						if dirFlecha >= 8 && dirFlecha < 11 { //HACIA FUERA
+						if dirFlecha%8 == 2 { //HACIA FUERA
 							sentidoFlecha = 1
 						}
-
 						_, err = db.Exec("INSERT INTO Carriles (interseccion_id, direccion_id, sentido, tipo_flecha) VALUES (?, ?, ?, ?)",
 							id, idDir, sentidoFlecha, dirFlecha%8)
 						if err != nil {
@@ -2283,12 +2302,20 @@ func colocarTodo(image *canvas.Image, w fyne.Window) {
 
 		idxCentro, idxFuera := 0, 0
 		if layoutsMarcas[i] != nil {
-			for _, obj := range layoutsMarcas[i].Objects {
+			var objs []fyne.CanvasObject
+			if d.Num == 3 || d.Num == 4 {
+				// Recorrer en orden inverso para direcciones 3 y 4 (si no se colocan al revés)
+				for j := len(layoutsMarcas[i].Objects) - 1; j >= 0; j-- {
+					objs = append(objs, layoutsMarcas[i].Objects[j])
+				}
+			} else {
+				objs = layoutsMarcas[i].Objects
+			}
+			for _, obj := range objs {
 				img, ok := obj.(*canvas.Image)
 				if !ok {
 					continue
 				}
-
 				posFlecha := getPosicionFlecha(img.Image, flechas)
 				if posFlecha == -1 {
 					continue
@@ -2360,14 +2387,14 @@ func colocarTodo(image *canvas.Image, w fyne.Window) {
 		if saliente == 1 {
 			if layoutsSemaforos[dirNum] == nil {
 				layoutsSemaforos[dirNum] = container.New(&layouts.Semaforos{})
-				layoutsSemaforos[dirNum].Move(posSemIzqda[dirNum-1])
+				layoutsSemaforos[dirNum].Move(posSemIzqda[dirNum])
 				layoutsSemaforos[dirNum].Resize(fyne.NewSize(90, 100))
 			}
 			layoutsSemaforos[dirNum].Add(img)
 			if numCentro == 0 {
 				if layoutsSemaforos[dirNum+4] == nil {
 					layoutsSemaforos[dirNum+4] = container.New(&layouts.Semaforos{})
-					layoutsSemaforos[dirNum+4].Move(posSemDcha[dirNum-1])
+					layoutsSemaforos[dirNum+4].Move(posSemDcha[dirNum])
 					layoutsSemaforos[dirNum+4].Resize(fyne.NewSize(90, 100))
 				}
 				layoutsSemaforos[dirNum+4].Add(img)
@@ -2375,14 +2402,14 @@ func colocarTodo(image *canvas.Image, w fyne.Window) {
 		} else {
 			if layoutsSemaforos[dirNum+4] == nil {
 				layoutsSemaforos[dirNum+4] = container.New(&layouts.Semaforos{})
-				layoutsSemaforos[dirNum+4].Move(posSemDcha[dirNum-1])
+				layoutsSemaforos[dirNum+4].Move(posSemDcha[dirNum])
 				layoutsSemaforos[dirNum+4].Resize(fyne.NewSize(90, 100))
 			}
 			layoutsSemaforos[dirNum+4].Add(img)
 			if numFuera == 0 {
 				if layoutsSemaforos[dirNum] == nil {
 					layoutsSemaforos[dirNum] = container.New(&layouts.Semaforos{})
-					layoutsSemaforos[dirNum].Move(posSemIzqda[dirNum-1])
+					layoutsSemaforos[dirNum].Move(posSemIzqda[dirNum])
 					layoutsSemaforos[dirNum].Resize(fyne.NewSize(90, 100))
 				}
 				layoutsSemaforos[dirNum].Add(img)
