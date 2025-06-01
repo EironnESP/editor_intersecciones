@@ -2105,12 +2105,6 @@ func abrirBBDD(c *fyne.Container, w fyne.Window, d *dialog.CustomDialog, image *
 	}
 	defer db.Close()
 
-	_, err = db.Exec("PRAGMA foreign_keys = ON")
-	if err != nil {
-		mostrarError("Error con la base de datos: "+err.Error(), fyne.CurrentApp())
-		return
-	}
-
 	//COMPROBAR SI HAY DISEÑOS
 	query := "SELECT COUNT(*) FROM Intersecciones"
 	rows, err := db.Query(query)
@@ -2173,6 +2167,12 @@ func abrirBBDD(c *fyne.Container, w fyne.Window, d *dialog.CustomDialog, image *
 						return
 					}
 					defer db.Close()
+
+					_, err = db.Exec("PRAGMA foreign_keys = ON")
+					if err != nil {
+						mostrarError("Error con la base de datos: "+err.Error(), fyne.CurrentApp())
+						return
+					}
 
 					_, err = db.Exec("DELETE FROM Intersecciones WHERE id = ?", idDiseno)
 					if err != nil {
