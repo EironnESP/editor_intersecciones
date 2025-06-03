@@ -1389,7 +1389,7 @@ func menuAddSemaforos(dir int, w fyne.Window, peatones bool, numCarrilesCentro, 
 	if numCarrilesFuera != 0 { //HAY CARRILES HACIA FUERA POR LO QUE SE AÑADE BOTON DE SEMAFORO SALIENTE
 		//COMPROBAR SI YA SE HA AÑADIDO UN SEMAFORO SALIENTE
 		haySaliente := false
-		if len(cIzquierda.Objects) == 1 {
+		if cIzquierda != nil && len(cIzquierda.Objects) == 1 {
 			haySaliente = true
 		}
 
@@ -1440,7 +1440,7 @@ func menuAddSemaforos(dir int, w fyne.Window, peatones bool, numCarrilesCentro, 
 	if numCarrilesCentro != 0 { //HAY CARRILES HACIA DENTRO POR LO QUE SE AÑADE BOTON DE SEMAFORO ENTRANTE
 		hayEntrante := false
 
-		if len(cDerecha.Objects) > 0 { //comprobar que haya semaforos entrantes
+		if cDerecha != nil && len(cDerecha.Objects) > 0 { //comprobar que haya semaforos entrantes
 			hayEntrante = true
 		}
 
