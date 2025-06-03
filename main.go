@@ -2425,17 +2425,17 @@ func colocarTodo(image *canvas.Image, w fyne.Window) {
 		}
 		sec := Secuencia{
 			Semaforo:  img,
-			Direccion: dirNum,
+			Direccion: dirNum + 1,
 			Colores:   coloresArr,
 			Segundos:  segundosInt,
 			Posicion:  posicion,
 			Saliente:  saliente == 1,
 			DirFlecha: dirFlecha,
 		}
-		if secuencias[dirNum] == nil {
-			secuencias[dirNum] = []Secuencia{}
+		if secuencias[dirNum+1] == nil {
+			secuencias[dirNum+1] = []Secuencia{}
 		}
-		secuencias[dirNum] = append(secuencias[dirNum], sec)
+		secuencias[dirNum+1] = append(secuencias[dirNum+1], sec)
 	}
 
 	//añadir layouts de semáforos y marcas al layout principal
@@ -2460,10 +2460,14 @@ func colocarTodo(image *canvas.Image, w fyne.Window) {
 	}
 
 	layoutComponentes.Refresh()
+
+	fmt.Println(secuencias)
 }
 
 // Abrir menú de ayuda
 func mostrarAyuda(w fyne.Window) {
+	fmt.Println("AAA", secuencias)
+
 	textoAyuda := widget.NewLabel(`Este programa consiste en 2 partes principales:
 	- Edición: en la vista de edición se pueden activar los botones con los que
 	poder modificar cada dirección, creando pasos de peatones, carriles, flechas
